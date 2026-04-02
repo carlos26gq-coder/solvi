@@ -4,26 +4,26 @@
     <meta charset="UTF-8">
     <title>Interlocks — Buscador Técnico</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, interactive-widget=resizes-content">
+
+    <!-- PWA -->
     <link rel="manifest" href="/manifest.json">
+
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Interlocks">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="/static/icon-512.png">
+
+    <!-- Android -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0b0f1a">
+    <meta name="description" content="Buscador de manuales técnicos para aceleradores lineales Elekta">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root {
-    --bg:      #0b0f1a;
-    --surface: #111827;
-    --surface2:#151e2e;
-    --border:  #1e293b;
-    --accent:  #00d4ff;
-    --accent2: #0077ff;
-    --green:   #4ade80;
-    --warn:    #f59e0b;
-    --danger:  #ef4444;
-    --note:    #a78bfa;
-    --text:    #e2e8f0;
-    --muted:   #64748b;
-    --mono:    'Share Tech Mono', monospace;
-    --sans:    'Barlow', sans-serif;
-}
+:root{--bg:#0b0f1a;--surface:#111827;--surface2:#151e2e;--border:#1e293b;--accent:#00d4ff;--accent2:#0077ff;--green:#4ade80;--warn:#f59e0b;--danger:#ef4444;--note:#a78bfa;--text:#e2e8f0;--muted:#64748b;--mono:'Share Tech Mono',monospace;--sans:'Barlow',sans-serif}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;padding-bottom:80px}
 body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,212,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
@@ -52,7 +52,7 @@ header{position:relative;z-index:10;padding:20px 20px 16px;border-bottom:1px sol
 .screen{display:none;position:relative;z-index:10;padding:20px}
 .screen.active{display:block}
 
-/* ── SEARCH SCREEN ── */
+/* INPUTS */
 .search-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px}
 .input-wrap{position:relative;flex:1;min-width:160px}
 .iicon{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:15px;pointer-events:none;color:var(--muted)}
@@ -61,21 +61,25 @@ select{padding-left:38px;cursor:pointer}
 textarea{padding:12px;resize:vertical;min-height:90px}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,212,255,.12)}
 input::placeholder,textarea::placeholder{color:var(--muted)}
+
+/* BUTTONS */
 .btn{border:none;color:#000;font-family:var(--sans);font-weight:700;font-size:.93rem;letter-spacing:.04em;padding:12px 22px;border-radius:9px;cursor:pointer;transition:transform .15s,box-shadow .15s,opacity .15s;white-space:nowrap}
 .btn-primary{background:linear-gradient(135deg,var(--accent2),var(--accent))}
 .btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,212,255,.3)}
-.btn-primary:active{transform:translateY(0);opacity:.85}
-.btn-primary.loading{opacity:.6;pointer-events:none}
+.btn-primary:active,.btn-primary.loading{transform:translateY(0);opacity:.7;pointer-events:none}
 .btn-danger{background:var(--danger);color:#fff}
 .btn-ghost{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.btn-sm{font-size:.72rem;padding:5px 12px;border-radius:7px}
+.btn-pdf{display:inline-flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px;border-radius:7px;border:1px solid rgba(0,212,255,.3);background:rgba(0,212,255,.07);color:var(--accent);cursor:pointer;font-family:var(--mono);transition:background .2s}
+.btn-pdf:hover{background:rgba(0,212,255,.15)}
 
-/* Meta bar */
+/* META BAR */
 #metaBar{display:none;align-items:center;justify-content:space-between;margin:14px 0 10px;flex-wrap:wrap;gap:6px}
 .meta-count{font-size:.8rem;font-family:var(--mono);color:var(--muted)}
 .meta-count span{color:var(--accent);font-weight:700}
 .meta-mode{font-size:.72rem;font-family:var(--mono);padding:2px 9px;border-radius:10px;background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.2)}
 
-/* Cards */
+/* RESULT CARDS */
 .result-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:16px 18px;margin-bottom:10px;transition:border-color .2s,transform .2s;animation:fadeIn .3s ease both}
 .result-card:hover{border-color:rgba(0,212,255,.35);transform:translateY(-1px)}
 .result-card.note-card{border-left:3px solid var(--note)}
@@ -87,12 +91,13 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 .card-page{font-size:.72rem;font-family:var(--mono);color:var(--muted)}
 .card-ctx{font-size:.85rem;line-height:1.65;color:#94a3b8;border-left:3px solid var(--border);padding-left:11px;margin-bottom:9px}
 .card-ctx mark{background:rgba(245,158,11,.22);color:var(--warn);border-radius:3px;padding:0 2px}
-.card-action{display:flex;align-items:flex-start;gap:7px;font-size:.8rem;color:#60a5fa;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.15);border-radius:7px;padding:7px 11px}
+.card-footer{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.card-action{display:flex;align-items:flex-start;gap:7px;font-size:.8rem;color:#60a5fa;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.15);border-radius:7px;padding:7px 11px;flex:1}
 .card-action::before{content:'⚙';font-size:13px;flex-shrink:0}
 .card-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
 .tag{font-size:.68rem;font-family:var(--mono);padding:2px 8px;border-radius:10px;background:rgba(167,139,250,.1);color:var(--note);border:1px solid rgba(167,139,250,.2)}
 
-/* States */
+/* STATES */
 .state-box{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px 20px;text-align:center;color:var(--muted)}
 .state-box .icon{font-size:3rem;margin-bottom:14px}
 .state-box p{font-size:.88rem;line-height:1.6;max-width:300px}
@@ -103,7 +108,7 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 .spinner{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ── NOTES SCREEN ── */
+/* NOTES */
 .notes-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .notes-header h2{font-size:1rem;font-weight:700;color:var(--text)}
 .note-form{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:16px;margin-bottom:16px}
@@ -115,16 +120,15 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 .note-item-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px}
 .note-item-title{font-size:.95rem;font-weight:600;color:var(--text)}
 .note-item-text{font-size:.83rem;color:#94a3b8;line-height:1.55;margin-bottom:8px}
-.note-actions{display:flex;gap:6px}
-.btn-sm{font-size:.72rem;padding:5px 12px;border-radius:7px}
+.note-actions{display:flex;gap:6px;flex-shrink:0}
 
-/* ── ADMIN SCREEN ── */
+/* ADMIN */
 .admin-lock{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px 20px;text-align:center}
 .admin-lock .icon{font-size:3rem}
 .admin-lock p{font-size:.85rem;color:var(--muted)}
 .admin-content{display:none}
 .admin-section{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:18px;margin-bottom:14px}
-.admin-section h3{font-size:.85rem;font-weight:700;color:var(--accent);margin-bottom:14px;font-family:var(--mono);display:flex;align-items:center;gap:7px}
+.admin-section h3{font-size:.85rem;font-weight:700;color:var(--accent);margin-bottom:14px;font-family:var(--mono)}
 .upload-drop{border:2px dashed var(--border);border-radius:9px;padding:28px;text-align:center;cursor:pointer;transition:border-color .2s;margin-bottom:12px}
 .upload-drop:hover{border-color:var(--accent)}
 .upload-drop p{font-size:.85rem;color:var(--muted);margin-top:8px}
@@ -134,7 +138,11 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 .manual-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:.82rem}
 .manual-row:last-child{border-bottom:none}
 .manual-row span{color:var(--muted);font-family:var(--mono)}
-.toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);padding:10px 20px;border-radius:9px;font-size:.83rem;z-index:1000;animation:fadeIn .3s ease;white-space:nowrap;pointer-events:none}
+.info-box{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:9px;padding:12px 14px;font-size:.8rem;color:#fcd34d;line-height:1.6}
+.info-box code{background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;font-family:var(--mono);font-size:.75rem}
+
+/* TOAST */
+.toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);padding:10px 20px;border-radius:9px;font-size:.83rem;z-index:1000;animation:fadeIn .3s ease;white-space:nowrap;pointer-events:none;max-width:90vw;text-align:center}
 .toast.ok{border-color:rgba(74,222,128,.4);color:var(--green)}
 .toast.err{border-color:rgba(239,68,68,.4);color:var(--danger)}
 </style>
@@ -158,9 +166,7 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
     </div>
 </header>
 
-<!-- ══════════════════════════════════════
-     SCREEN 1 — BÚSQUEDA
-══════════════════════════════════════ -->
+<!-- ══ SCREEN: BÚSQUEDA ══ -->
 <div id="screenSearch" class="screen active">
     <div class="search-row">
         <div class="input-wrap" style="flex:2;min-width:160px">
@@ -216,16 +222,12 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
     <div id="resultsList"></div>
 </div>
 
-<!-- ══════════════════════════════════════
-     SCREEN 2 — APUNTES
-══════════════════════════════════════ -->
+<!-- ══ SCREEN: APUNTES ══ -->
 <div id="screenNotes" class="screen">
     <div class="notes-header">
         <h2>📝 Mis Apuntes</h2>
         <button class="btn btn-primary btn-sm" onclick="toggleNoteForm()">+ Nuevo</button>
     </div>
-
-    <!-- Formulario nuevo/editar -->
     <div id="noteForm" class="note-form" style="display:none">
         <h3 id="noteFormTitle">✏️ NUEVO APUNTE</h3>
         <input type="hidden" id="editingId">
@@ -246,7 +248,6 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
             <button class="btn btn-ghost" onclick="cancelNoteForm()">Cancelar</button>
         </div>
     </div>
-
     <div id="notesList"></div>
     <div id="notesEmpty" class="state-box" style="display:none">
         <div class="icon">📓</div>
@@ -255,12 +256,8 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
     </div>
 </div>
 
-<!-- ══════════════════════════════════════
-     SCREEN 3 — ADMIN
-══════════════════════════════════════ -->
+<!-- ══ SCREEN: ADMIN ══ -->
 <div id="screenAdmin" class="screen">
-
-    <!-- Lock / login -->
     <div id="adminLock" class="admin-lock">
         <div class="icon">🔒</div>
         <h2 style="font-size:1rem;color:var(--text)">Área de Administración</h2>
@@ -271,13 +268,12 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
         </div>
     </div>
 
-    <!-- Contenido admin -->
     <div id="adminContent" class="admin-content">
 
         <div class="admin-section">
             <h3>📤 Subir nuevo manual PDF</h3>
             <div class="field">
-                <label>Nombre del manual (sin espacios)</label>
+                <label>Nombre del manual (sin espacios ni tildes)</label>
                 <input id="uploadName" type="text" placeholder="Ej: nuevo_manual" style="padding-left:12px">
             </div>
             <div class="upload-drop" onclick="document.getElementById('fileInput').click()">
@@ -286,7 +282,21 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
             </div>
             <input type="file" id="fileInput" accept=".pdf" onchange="onFileSelected(this)">
             <button class="btn btn-primary" style="width:100%" onclick="uploadPDF()">⬆️ Subir y procesar</button>
-            <div id="uploadStatus" style="margin-top:10px;font-size:.82rem;color:var(--muted)"></div>
+            <div id="uploadStatus" style="margin-top:12px;font-size:.82rem;line-height:1.6"></div>
+        </div>
+
+        <div class="admin-section">
+            <h3>📌 Para que el manual sea permanente</h3>
+            <div class="info-box">
+                Render borra los archivos subidos al reiniciar. Para que un manual quede permanente, súbelo también a GitHub:<br><br>
+                1. Copia el PDF a <code>proyecto_interlocks\manuals\</code><br>
+                2. Copia el JSON generado a <code>data\pages\</code><br>
+                3. Ejecuta en CMD:<br>
+                <code>git add .</code><br>
+                <code>git commit -m "Nuevo manual: nombre"</code><br>
+                <code>git push</code><br><br>
+                Render redeploya automáticamente y el manual queda disponible para siempre.
+            </div>
         </div>
 
         <div class="admin-section">
@@ -318,33 +328,32 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 
 <script src="/static/app.js"></script>
 <script>
-/* ══ NAVEGACIÓN ══ */
 function showScreen(name) {
     document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-    document.getElementById("screen" + name.charAt(0).toUpperCase() + name.slice(1)).classList.add("active");
+    const n = name.charAt(0).toUpperCase() + name.slice(1);
+    document.getElementById("screen" + n).classList.add("active");
     document.getElementById("nav-" + name).classList.add("active");
     if (name === "notes") loadNotes();
 }
 
-/* ══ SERVICE WORKER ══ */
 (async () => {
     if (!("serviceWorker" in navigator)) return;
     const cacheKeys = await caches.keys();
     for (const key of cacheKeys) {
-        if (key !== "interlocks-v11") await caches.delete(key);
+        if (key !== "interlocks-v12") await caches.delete(key);
     }
     const regs = await navigator.serviceWorker.getRegistrations();
     for (const reg of regs) await reg.unregister();
     try {
-        const reg = await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
+        const reg = await navigator.serviceWorker.register("/sw.js", { updateViaCache:"none" });
         const awaitUpdate = w => w.addEventListener("statechange", () => {
             if (w.state === "activated") window.location.reload();
         });
         if (reg.installing) awaitUpdate(reg.installing);
-        if (reg.waiting) { reg.waiting.postMessage({ type: "SKIP_WAITING" }); awaitUpdate(reg.waiting); }
+        if (reg.waiting) { reg.waiting.postMessage({type:"SKIP_WAITING"}); awaitUpdate(reg.waiting); }
         reg.addEventListener("updatefound", () => awaitUpdate(reg.installing));
-    } catch(e) { console.error("SW error:", e); }
+    } catch(e) { console.error("SW:", e); }
 })();
 </script>
 </body>

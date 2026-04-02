@@ -1,6 +1,6 @@
 """
-api.py  — Interlocks Buscador Técnico  v3
-+ Apuntes personales  + Subida de PDFs  + Supabase (opcional)
+api.py  — Interlocks Buscador Técnico  v4
++ Sirve PDFs desde /manuals/ para visor con página exacta
 """
 
 from flask import Flask, request, jsonify, render_template, send_from_directory, make_response
@@ -16,7 +16,7 @@ try:
 except ImportError:
     PDF_AVAILABLE = False
 
-# ── Supabase (opcional, solo si están las variables de entorno) ──
+# ── Supabase (opcional) ──
 USE_SUPABASE = False
 supabase     = None
 try:
@@ -31,14 +31,7 @@ except ImportError:
     pass
 
 # ════════════════════════════════════════════════════════
-#  FLASK
-# ════════════════════════════════════════════════════════
-
-app = Flask(
-    __name__,
-    template_folder="templates",
-    static_folder="static"
-)
+app = Flask(__name__, template_folder="templates", static_folder="static")
 CORS(app)
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "elekta2025")
@@ -48,8 +41,9 @@ DATA_DIR   = BASE_DIR / "data"
 PAGES_DIR  = DATA_DIR / "pages"
 DATA_PATH  = DATA_DIR / "all_manuals.json"
 NOTES_PATH = DATA_DIR / "notes.json"
-UPLOAD_DIR = BASE_DIR / "manuals"
-UPLOAD_DIR.mkdir(exist_ok=True)
+MANUAL_DIR = BASE_DIR / "manuals"   # PDFs originales
+
+MANUAL_DIR.mkdir(exist_ok=True)
 PAGES_DIR.mkdir(exist_ok=True)
 
 with open(DATA_PATH, "r", encoding="utf-8") as f:
@@ -65,8 +59,7 @@ def no_cache(resp):
     resp.headers["Expires"] = "0"
     return resp
 
-# ── Notas: Supabase o JSON local ──
-
+# ── Notas ──
 def notes_load():
     if USE_SUPABASE:
         return supabase.table("notes").select("*").execute().data or []
@@ -107,15 +100,13 @@ def notes_delete(nid):
         _notes_save([n for n in notes_load() if n["id"] != nid])
 
 # ── PDF ──
-
 def pdf_to_pages(pdf_path, manual_name):
     pages = []
     with pdfplumber.open(pdf_path) as pdf:
         for i, page in enumerate(pdf.pages, 1):
             text = (page.extract_text() or "").strip()
             if text:
-                pages.append({"manual": manual_name.lower().strip(),
-                               "page": i, "text": text})
+                pages.append({"manual": manual_name.lower().strip(), "page": i, "text": text})
     return pages
 
 def rebuild_index():
@@ -171,6 +162,12 @@ def service_worker():
 def serve_data(filename):
     return send_from_directory(DATA_DIR, filename)
 
+# ── Servir PDFs para el visor ──
+@app.route("/manuals/<path:filename>")
+def serve_manual(filename):
+    """Sirve el PDF original para abrirlo en el navegador en la página exacta."""
+    return send_from_directory(MANUAL_DIR, filename)
+
 # ════════════════════════════════════════════════════════
 #  API — BÚSQUEDA
 # ════════════════════════════════════════════════════════
@@ -184,7 +181,6 @@ def search():
 
     results = []
 
-    # Manuales
     for page in manuals:
         if mfilter and mfilter != "apuntes" and page["manual"].lower() != mfilter:
             continue
@@ -203,7 +199,6 @@ def search():
                        or "Revisar sección completa del manual"
         })
 
-    # Apuntes
     if not mfilter or mfilter == "apuntes":
         for note in notes_load():
             blob = (note["title"]+" "+note["text"]+" "+" ".join(note.get("tags",[]))).lower()
@@ -221,7 +216,7 @@ def search():
     return jsonify({"results": results})
 
 # ════════════════════════════════════════════════════════
-#  API — APUNTES
+#  API — NOTAS
 # ════════════════════════════════════════════════════════
 
 @app.route("/notes", methods=["GET"])
@@ -246,7 +241,7 @@ def delete_note(nid):
     return jsonify({"ok": True})
 
 # ════════════════════════════════════════════════════════
-#  API — ADMIN: subir PDF
+#  API — ADMIN
 # ════════════════════════════════════════════════════════
 
 @app.route("/admin/upload", methods=["POST"])
@@ -254,17 +249,14 @@ def upload_pdf():
     if request.form.get("password","") != ADMIN_PASSWORD:
         return jsonify({"error": "Contraseña incorrecta"}), 403
     if not PDF_AVAILABLE:
-        return jsonify({"error": "Instala pdfplumber: pip install pdfplumber --break-system-packages"}), 500
+        return jsonify({"error": "Instala pdfplumber: pip install pdfplumber"}), 500
     file = request.files.get("pdf")
     if not file or not file.filename.lower().endswith(".pdf"):
         return jsonify({"error": "Sube un archivo PDF válido"}), 400
 
-    manual_name = request.form.get("manual_name","").strip()
-    if not manual_name:
-        manual_name = Path(file.filename).stem.lower().replace(" ","_")
-
-    safe = re.sub(r"[^\w\-]","_", manual_name)
-    pdf_path = UPLOAD_DIR / f"{safe}.pdf"
+    manual_name = request.form.get("manual_name","").strip() or Path(file.filename).stem.lower()
+    safe        = re.sub(r"[^\w\-]","_", manual_name)
+    pdf_path    = MANUAL_DIR / f"{safe}.pdf"
     file.save(str(pdf_path))
 
     try:
@@ -290,8 +282,5 @@ def list_manuals():
     return jsonify([{"manual":k,"pages":v} for k,v in sorted(counts.items())])
 
 # ════════════════════════════════════════════════════════
-#  RUN
-# ════════════════════════════════════════════════════════
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

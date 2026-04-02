@@ -1,4 +1,4 @@
-console.log("✅ app.js v3");
+console.log("✅ app.js v4");
 
 /* ══════════════════════════════════════════
    RED
@@ -6,15 +6,21 @@ console.log("✅ app.js v3");
 function actualizarRed() {
     const el  = document.getElementById("estadoRed");
     const txt = document.getElementById("estadoTxt");
-    if (navigator.onLine) { el.className = "online";  txt.textContent = "Conectado"; }
-    else                  { el.className = "offline"; txt.textContent = "Sin conexión"; }
+    if (navigator.onLine) {
+        el.className = "online";
+        txt.textContent = "Conectado";
+        sincronizarNotasPendientes(); // sync al recuperar conexión
+    } else {
+        el.className = "offline";
+        txt.textContent = "Sin conexión";
+    }
 }
 window.addEventListener("online",  actualizarRed);
 window.addEventListener("offline", actualizarRed);
 actualizarRed();
 
 /* ══════════════════════════════════════════
-   CACHÉ OFFLINE
+   CACHÉ OFFLINE — manuales
 ══════════════════════════════════════════ */
 let manualsData = null;
 
@@ -46,22 +52,31 @@ function toast(msg, type="ok") {
     t.className = `toast ${type}`;
     t.textContent = msg;
     document.body.appendChild(t);
-    setTimeout(() => t.remove(), 3000);
+    setTimeout(() => t.remove(), 3500);
 }
 
 /* ══════════════════════════════════════════
-   UI STATES (BÚSQUEDA)
+   VISOR PDF
+══════════════════════════════════════════ */
+function abrirPDF(manual, page) {
+    // Construye URL al PDF y abre en nueva pestaña con página exacta
+    // Los PDFs deben estar en /manuals/ servidos por Flask
+    const url = `/manuals/${encodeURIComponent(manual)}.pdf#page=${page}`;
+    window.open(url, "_blank");
+}
+
+/* ══════════════════════════════════════════
+   UI STATES
 ══════════════════════════════════════════ */
 function showState(state) {
-    const ids = ["welcomeState","spinnerState","emptyState","resultsList","metaBar"];
-    ids.forEach(id => {
+    ["welcomeState","spinnerState","emptyState","resultsList","metaBar"].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = "none";
     });
-    if (state === "welcome")  { document.getElementById("welcomeState").style.display  = "flex"; }
-    if (state === "loading")  { document.getElementById("spinnerState").style.display  = "block"; }
-    if (state === "empty")    { document.getElementById("emptyState").style.display    = "flex"; }
-    if (state === "results")  {
+    if (state === "welcome") document.getElementById("welcomeState").style.display  = "flex";
+    if (state === "loading") document.getElementById("spinnerState").style.display  = "block";
+    if (state === "empty")   document.getElementById("emptyState").style.display    = "flex";
+    if (state === "results") {
         document.getElementById("resultsList").style.display = "block";
         document.getElementById("metaBar").style.display     = "flex";
     }
@@ -81,17 +96,21 @@ function renderResultados(results, keyword, mode) {
     showState("results");
 
     results.forEach((r, i) => {
-        const isNote  = r.type === "note";
-        const card    = document.createElement("div");
+        const isNote = r.type === "note";
+        const card   = document.createElement("div");
         card.className = `result-card${isNote ? " note-card" : ""}`;
         card.style.animationDelay = `${i * 35}ms`;
 
-        const badgeClass = isNote ? "note-badge" : "manual-badge";
+        const badgeClass  = isNote ? "note-badge" : "manual-badge";
         const manualLabel = isNote ? "📝 Apunte" : esc(r.manual);
-        const pageLabel   = isNote ? esc(r.page) : `Página ${r.page}`;
-
-        const tagsHtml = isNote && r.tags && r.tags.length
+        const pageLabel   = isNote ? esc(r.page)  : `Página ${r.page}`;
+        const tagsHtml    = isNote && r.tags?.length
             ? `<div class="card-tags">${r.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>`
+            : "";
+
+        // Botón abrir PDF solo para manuales (no apuntes)
+        const pdfBtn = !isNote
+            ? `<button class="btn-pdf" onclick="abrirPDF('${esc(r.manual)}',${r.page})" title="Abrir PDF en página ${r.page}">📖 Ver PDF</button>`
             : "";
 
         card.innerHTML = `
@@ -100,7 +119,10 @@ function renderResultados(results, keyword, mode) {
                 <span class="card-page">📄 ${pageLabel}</span>
             </div>
             <div class="card-ctx">${highlight(r.context, keyword)}</div>
-            <div class="card-action">${esc(r.action)}</div>
+            <div class="card-footer">
+                <div class="card-action">${esc(r.action)}</div>
+                ${pdfBtn}
+            </div>
             ${tagsHtml}
         `;
         list.appendChild(card);
@@ -111,10 +133,10 @@ function renderResultados(results, keyword, mode) {
    BÚSQUEDA OFFLINE
 ══════════════════════════════════════════ */
 async function buscarOffline(kw, mf) {
-    const data = await cargarManuales();
+    const data    = await cargarManuales();
     const results = [];
-    const kwl = kw.toLowerCase();
-    const mfl = mf.toLowerCase();
+    const kwl     = kw.toLowerCase();
+    const mfl     = mf.toLowerCase();
 
     for (const page of data) {
         if (mfl && mfl !== "apuntes" && page.manual.toLowerCase() !== mfl) continue;
@@ -127,10 +149,9 @@ async function buscarOffline(kw, mf) {
                        context:ctx, action:"Revisar sección completa del manual" });
     }
 
-    // Apuntes offline: intentar desde localStorage como fallback
+    // Apuntes desde localStorage
     if (!mfl || mfl === "apuntes") {
-        const localNotes = JSON.parse(localStorage.getItem("interlocks_notes") || "[]");
-        for (const note of localNotes) {
+        for (const note of localNotesLoad()) {
             const blob = (note.title+" "+note.text+" "+(note.tags||[]).join(" ")).toLowerCase();
             if (blob.includes(kwl)) {
                 results.push({ type:"note", id:note.id, manual:"apuntes",
@@ -139,7 +160,6 @@ async function buscarOffline(kw, mf) {
             }
         }
     }
-
     return results;
 }
 
@@ -155,7 +175,7 @@ async function buscarOnline(kw, mf) {
 }
 
 /* ══════════════════════════════════════════
-   CONTROLADOR PRINCIPAL BÚSQUEDA
+   CONTROLADOR BÚSQUEDA
 ══════════════════════════════════════════ */
 async function iniciarBusqueda() {
     const kw = document.getElementById("q").value.trim();
@@ -178,7 +198,8 @@ async function iniciarBusqueda() {
             try   { results = await buscarOnline(kw, mf); mode = "online"; }
             catch { results = await buscarOffline(kw, mf); mode = "offline"; }
         } else {
-            results = await buscarOffline(kw, mf); mode = "offline";
+            results = await buscarOffline(kw, mf);
+            mode = "offline";
         }
         renderResultados(results, kw, mode);
     } catch(e) {
@@ -202,6 +223,9 @@ window.addEventListener("load", () => {
     if (m) m.disabled = false;
     showState("welcome");
 
+    // Sincronizar notas al arrancar si hay conexión
+    if (navigator.onLine) sincronizarNotasPendientes();
+
     document.getElementById("btnBuscar")?.addEventListener("click", iniciarBusqueda);
     [q, m].forEach(el => {
         el?.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();iniciarBusqueda();} });
@@ -210,10 +234,11 @@ window.addEventListener("load", () => {
 });
 
 /* ══════════════════════════════════════════
-   APUNTES — helpers localStorage (offline)
+   APUNTES — localStorage
 ══════════════════════════════════════════ */
 function localNotesLoad() {
-    return JSON.parse(localStorage.getItem("interlocks_notes") || "[]");
+    try { return JSON.parse(localStorage.getItem("interlocks_notes") || "[]"); }
+    catch { return []; }
 }
 function localNotesSave(notes) {
     localStorage.setItem("interlocks_notes", JSON.stringify(notes));
@@ -225,6 +250,30 @@ function localNoteSync(note) {
 }
 function localNoteDelete(id) {
     localNotesSave(localNotesLoad().filter(n => n.id !== id));
+}
+
+// Notas pendientes de sync (creadas offline)
+function pendingLoad()       { try { return JSON.parse(localStorage.getItem("interlocks_pending") || "[]"); } catch { return []; } }
+function pendingSave(p)      { localStorage.setItem("interlocks_pending", JSON.stringify(p)); }
+function pendingAdd(note)    { const p = pendingLoad(); p.push(note); pendingSave(p); }
+function pendingRemove(id)   { pendingSave(pendingLoad().filter(n => n.id !== id)); }
+
+async function sincronizarNotasPendientes() {
+    const pending = pendingLoad();
+    if (!pending.length) return;
+    let synced = 0;
+    for (const note of pending) {
+        try {
+            await fetch("/notes", {
+                method: "POST",
+                headers: {"Content-Type":"application/json"},
+                body: JSON.stringify(note)
+            });
+            pendingRemove(note.id);
+            synced++;
+        } catch { break; }
+    }
+    if (synced > 0) toast(`☁️ ${synced} apunte(s) sincronizado(s) con el servidor`);
 }
 
 /* ══════════════════════════════════════════
@@ -241,13 +290,11 @@ async function loadNotes() {
         try {
             const r = await fetch("/notes");
             notes = await r.json();
-            // Sincronizar al localStorage para offline
-            localNotesSave(notes);
+            localNotesSave(notes); // ← guardar siempre al cargar online
         } catch { notes = localNotesLoad(); }
     } else {
         notes = localNotesLoad();
     }
-
     renderNotes(notes);
 }
 
@@ -255,11 +302,7 @@ function renderNotes(notes) {
     const list  = document.getElementById("notesList");
     const empty = document.getElementById("notesEmpty");
     list.innerHTML = "";
-
-    if (!notes || notes.length === 0) {
-        empty.style.display = "flex";
-        return;
-    }
+    if (!notes || notes.length === 0) { empty.style.display = "flex"; return; }
     empty.style.display = "none";
 
     notes.forEach(note => {
@@ -267,9 +310,10 @@ function renderNotes(notes) {
         div.className = "note-item";
         div.id = `note-${note.id}`;
         const tagsHtml = (note.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("");
+        const isPending = pendingLoad().some(p => p.id === note.id);
         div.innerHTML = `
             <div class="note-item-header">
-                <div class="note-item-title">${esc(note.title)}</div>
+                <div class="note-item-title">${esc(note.title)}${isPending ? ' <span style="color:var(--warn);font-size:.7rem">⏳ pendiente</span>' : ""}</div>
                 <div class="note-actions">
                     <button class="btn btn-ghost btn-sm" onclick="editNote('${note.id}')">✏️</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteNote('${note.id}')">🗑</button>
@@ -287,16 +331,14 @@ function renderNotes(notes) {
 ══════════════════════════════════════════ */
 function toggleNoteForm() {
     const form = document.getElementById("noteForm");
-    const visible = form.style.display !== "none";
-    if (visible) { cancelNoteForm(); } else {
-        form.style.display = "block";
-        document.getElementById("noteFormTitle").textContent = "✏️ NUEVO APUNTE";
-        document.getElementById("editingId").value = "";
-        document.getElementById("noteTitle").value = "";
-        document.getElementById("noteText").value  = "";
-        document.getElementById("noteTags").value  = "";
-        document.getElementById("noteTitle").focus();
-    }
+    if (form.style.display !== "none") { cancelNoteForm(); return; }
+    form.style.display = "block";
+    document.getElementById("noteFormTitle").textContent = "✏️ NUEVO APUNTE";
+    document.getElementById("editingId").value = "";
+    document.getElementById("noteTitle").value = "";
+    document.getElementById("noteText").value  = "";
+    document.getElementById("noteTags").value  = "";
+    document.getElementById("noteTitle").focus();
 }
 
 function cancelNoteForm() {
@@ -304,8 +346,7 @@ function cancelNoteForm() {
 }
 
 function editNote(id) {
-    const notes = localNotesLoad();
-    const note  = notes.find(n => n.id === id);
+    const note = localNotesLoad().find(n => n.id === id);
     if (!note) return;
     document.getElementById("noteForm").style.display = "block";
     document.getElementById("noteFormTitle").textContent = "✏️ EDITAR APUNTE";
@@ -322,32 +363,30 @@ async function saveNote() {
     const title = document.getElementById("noteTitle").value.trim();
     const text  = document.getElementById("noteText").value.trim();
     const tags  = document.getElementById("noteTags").value.split(",").map(t=>t.trim()).filter(Boolean);
-
     if (!title) { toast("El título es obligatorio","err"); return; }
 
-    const body = JSON.stringify({ title, text, tags });
+    const note = { id: id || crypto.randomUUID(), title, text, tags };
 
-    try {
-        let note;
-        if (navigator.onLine) {
+    if (navigator.onLine) {
+        try {
             const method = id ? "PUT" : "POST";
             const url    = id ? `/notes/${id}` : "/notes";
-            const r = await fetch(url, { method, headers:{"Content-Type":"application/json"}, body });
-            note = await r.json();
-            if (id) note.id = id;
-        } else {
-            // Guardar solo en localStorage cuando offline
-            note = { id: id || crypto.randomUUID(), title, text, tags };
-            toast("⚠️ Guardado localmente (sin internet). Se sincronizará al conectarte.","ok");
+            await fetch(url, { method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(note) });
+            pendingRemove(note.id); // ya sincronizado
+        } catch {
+            if (!id) pendingAdd(note); // guardar como pendiente si falla
+            toast("⚠️ Error al guardar en servidor, guardado localmente","err");
         }
-        localNoteSync(note);
-        cancelNoteForm();
-        loadNotes();
-        toast(id ? "✅ Apunte actualizado" : "✅ Apunte guardado");
-    } catch(e) {
-        console.error(e);
-        toast("❌ Error al guardar: " + e.message, "err");
+    } else {
+        // Sin internet: guardar local y marcar como pendiente
+        if (!id) pendingAdd(note);
+        toast("⚠️ Sin internet — se sincronizará cuando te conectes");
     }
+
+    localNoteSync(note);
+    cancelNoteForm();
+    loadNotes();
+    toast(id ? "✅ Apunte actualizado" : "✅ Apunte guardado");
 }
 
 async function deleteNote(id) {
@@ -355,6 +394,7 @@ async function deleteNote(id) {
     try {
         if (navigator.onLine) await fetch(`/notes/${id}`, { method:"DELETE" });
         localNoteDelete(id);
+        pendingRemove(id);
         document.getElementById(`note-${id}`)?.remove();
         const list = document.getElementById("notesList");
         if (!list.children.length) document.getElementById("notesEmpty").style.display = "flex";
@@ -371,7 +411,6 @@ function adminLogin() {
     const pw = document.getElementById("adminPass").value.trim();
     if (!pw) { toast("Ingresa la contraseña","err"); return; }
     adminPassword = pw;
-    // Verificar con el servidor
     fetch(`/admin/manuals?password=${encodeURIComponent(pw)}`)
         .then(r => {
             if (r.ok) {
@@ -383,7 +422,7 @@ function adminLogin() {
                 adminPassword = "";
             }
         })
-        .catch(() => toast("❌ Sin conexión — no se puede verificar","err"));
+        .catch(() => toast("❌ Sin conexión","err"));
 }
 
 function adminLogout() {
@@ -406,7 +445,7 @@ function onFileSelected(input) {
 
 async function uploadPDF() {
     if (!selectedFile) { toast("Selecciona un PDF primero","err"); return; }
-    const name = document.getElementById("uploadName").value.trim();
+    const name   = document.getElementById("uploadName").value.trim();
     const status = document.getElementById("uploadStatus");
 
     const fd = new FormData();
@@ -421,16 +460,16 @@ async function uploadPDF() {
         const r    = await fetch("/admin/upload", { method:"POST", body:fd });
         const data = await r.json();
         if (r.ok) {
-            status.textContent = `✅ ${data.manual}: ${data.pages} páginas agregadas (total: ${data.total_pages})`;
+            status.innerHTML = `✅ <b>${data.manual}</b>: ${data.pages} páginas agregadas (total en índice: ${data.total_pages})<br>
+                <span style="color:var(--warn);font-size:.78rem">⚠️ Para que el manual persista en Render, súbelo también a GitHub (ver instrucciones abajo).</span>`;
             status.style.color = "var(--green)";
             selectedFile = null;
             document.getElementById("fileInput").value = "";
             document.getElementById("uploadLabel").textContent = "Toca aquí para seleccionar un PDF";
             document.getElementById("uploadName").value = "";
             loadManualList();
-            // Recargar manuales offline
-            manualsData = null;
-            toast(`✅ Manual "${data.manual}" agregado`);
+            manualsData = null; // forzar recarga offline
+            toast(`✅ Manual "${data.manual}" procesado`);
         } else {
             status.textContent = `❌ ${data.error}`;
             status.style.color = "var(--danger)";
@@ -443,7 +482,7 @@ async function uploadPDF() {
 
 async function loadManualList() {
     const div = document.getElementById("manualList");
-    div.innerHTML = `<div class="spinner-wrap" style="padding:20px 0"><div class="spinner"></div></div>`;
+    div.innerHTML = `<div class="spinner-wrap" style="padding:16px 0"><div class="spinner"></div></div>`;
     try {
         const r    = await fetch(`/admin/manuals?password=${encodeURIComponent(adminPassword)}`);
         const data = await r.json();
