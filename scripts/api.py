@@ -1,46 +1,34 @@
 """
-api.py — Interlocks Buscador Técnico v6
-- Contraseña admin robusta
-- Notas en data/notes.json (sin Supabase)
-- PDFs en Cloudflare R2 (URL pública configurable)
-- Sin dependencias opcionales que puedan fallar
+api.py — Interlocks Buscador Técnico v7
 """
-
 from flask import Flask, request, jsonify, render_template, send_from_directory, make_response
 from flask_cors import CORS
 from pathlib import Path
-import json, os, uuid
+import json, os, uuid, time
 from action_extractor import extract_action
 
-# ════════════════════════════════════════════════════════
 app = Flask(__name__, template_folder="templates", static_folder="static")
 CORS(app)
 
-# ── Contraseña admin ──
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "elekta2025").strip()
+R2_PUBLIC_URL  = os.environ.get("R2_PUBLIC_URL", "").strip().rstrip("/")
 
-# ── URL base de Cloudflare R2 (ej: https://pub-xxx.r2.dev) ──
-# Sin barra al final. Si no está configurada, el botón PDF no aparece.
-R2_PUBLIC_URL = os.environ.get("R2_PUBLIC_URL", "").strip().rstrip("/")
+# Timestamp de cuando arrancó el servidor — cambia con cada deploy
+BUILD_TIME = str(int(time.time()))
 
-# ── Paths ──
 BASE_DIR   = Path(__file__).resolve().parent.parent
 DATA_DIR   = BASE_DIR / "data"
-PAGES_DIR  = DATA_DIR / "pages"
 DATA_PATH  = DATA_DIR / "all_manuals.json"
 NOTES_PATH = DATA_DIR / "notes.json"
 
-# Cargar índice de manuales
 with open(DATA_PATH, "r", encoding="utf-8") as f:
     manuals = json.load(f)
 
-print(f"✅ {len(manuals)} páginas cargadas")
-print(f"🔑 Admin password: {'env' if os.environ.get('ADMIN_PASSWORD') else 'default'}")
-print(f"☁️  R2 URL: {R2_PUBLIC_URL or 'no configurada'}")
+print(f"✅ {len(manuals)} páginas | build: {BUILD_TIME}")
+print(f"🔑 Password: {'env' if os.environ.get('ADMIN_PASSWORD') else 'default'}")
+print(f"☁️  R2: {R2_PUBLIC_URL or 'no configurada'}")
 
-# ════════════════════════════════════════════════════════
-#  HELPERS
-# ════════════════════════════════════════════════════════
+# ── HELPERS ──────────────────────────────────────────────
 
 def no_cache(resp):
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -51,7 +39,6 @@ def no_cache(resp):
 def check_pw(pw):
     return pw.strip() == ADMIN_PASSWORD
 
-# ── Notas en JSON local (data/notes.json) ──
 def notes_load():
     if NOTES_PATH.exists():
         with open(NOTES_PATH, "r", encoding="utf-8") as f:
@@ -63,36 +50,30 @@ def notes_save(notes):
         json.dump(notes, f, ensure_ascii=False, indent=2)
 
 def note_create(title, text, tags):
-    note = {
-        "id":    str(uuid.uuid4()),
-        "title": title.strip(),
-        "text":  text.strip(),
-        "tags":  [t.strip() for t in tags if t.strip()]
-    }
-    notes = notes_load()
-    notes.append(note)
-    notes_save(notes)
+    note = {"id": str(uuid.uuid4()), "title": title.strip(),
+            "text": text.strip(), "tags": [t.strip() for t in tags if t.strip()]}
+    ns = notes_load(); ns.append(note); notes_save(ns)
     return note
 
 def note_update(nid, title, text, tags):
-    notes = notes_load()
-    for n in notes:
+    ns = notes_load()
+    for n in ns:
         if n["id"] == nid:
             n["title"] = title.strip()
             n["text"]  = text.strip()
             n["tags"]  = [t.strip() for t in tags if t.strip()]
-    notes_save(notes)
+    notes_save(ns)
 
 def note_delete(nid):
     notes_save([n for n in notes_load() if n["id"] != nid])
 
-# ════════════════════════════════════════════════════════
-#  FRONTEND
-# ════════════════════════════════════════════════════════
+# ── FRONTEND ─────────────────────────────────────────────
 
 @app.route("/")
 def home():
-    return no_cache(make_response(render_template("index.html")))
+    # Inyectar BUILD_TIME en el HTML para cache-busting de app.js
+    html = render_template("index.html", build_time=BUILD_TIME)
+    return no_cache(make_response(html))
 
 @app.route("/reset")
 def reset():
@@ -129,9 +110,11 @@ def service_worker():
 def serve_data(filename):
     return send_from_directory(DATA_DIR, filename)
 
-# ════════════════════════════════════════════════════════
-#  API — BÚSQUEDA
-# ════════════════════════════════════════════════════════
+@app.route("/version")
+def version():
+    return jsonify({"build": BUILD_TIME})
+
+# ── BÚSQUEDA ─────────────────────────────────────────────
 
 @app.route("/search")
 def search():
@@ -141,8 +124,6 @@ def search():
         return jsonify({"results": [], "r2_url": R2_PUBLIC_URL})
 
     results = []
-
-    # Buscar en manuales
     for page in manuals:
         if mfilter and mfilter != "apuntes" and page["manual"].lower() != mfilter:
             continue
@@ -150,8 +131,8 @@ def search():
         if keyword not in tl:
             continue
         pos = tl.find(keyword)
-        ctx = page["text"][max(0, pos-80):min(len(page["text"]), pos+120)]
-        ctx = ctx.replace("\n", " ").strip()
+        ctx = page["text"][max(0,pos-80):min(len(page["text"]),pos+120)]
+        ctx = ctx.replace("\n"," ").strip()
         results.append({
             "type":    "manual",
             "manual":  page["manual"],
@@ -161,27 +142,19 @@ def search():
                        or "Revisar sección completa del manual"
         })
 
-    # Buscar en apuntes
     if not mfilter or mfilter == "apuntes":
         for note in notes_load():
-            blob = (note["title"] + " " + note["text"] + " " +
-                    " ".join(note.get("tags", []))).lower()
+            blob = (note["title"]+" "+note["text"]+" "+" ".join(note.get("tags",[]))).lower()
             if keyword in blob:
                 results.append({
-                    "type":    "note",
-                    "id":      note["id"],
-                    "manual":  "apuntes",
-                    "page":    note["title"],
-                    "context": note["text"][:220],
-                    "action":  "Apunte personal",
-                    "tags":    note.get("tags", [])
+                    "type":"note", "id":note["id"], "manual":"apuntes",
+                    "page":note["title"], "context":note["text"][:220],
+                    "action":"Apunte personal", "tags":note.get("tags",[])
                 })
 
     return jsonify({"results": results, "r2_url": R2_PUBLIC_URL})
 
-# ════════════════════════════════════════════════════════
-#  API — NOTAS
-# ════════════════════════════════════════════════════════
+# ── NOTAS ────────────────────────────────────────────────
 
 @app.route("/notes", methods=["GET"])
 def get_notes():
@@ -190,11 +163,8 @@ def get_notes():
 @app.route("/notes", methods=["POST"])
 def create_note():
     d = request.get_json(force=True)
-    return jsonify(note_create(
-        d.get("title", "Sin título"),
-        d.get("text", ""),
-        d.get("tags", [])
-    )), 201
+    return jsonify(note_create(d.get("title","Sin título"),
+                               d.get("text",""), d.get("tags",[]))), 201
 
 @app.route("/notes/<nid>", methods=["PUT"])
 def update_note(nid):
@@ -207,32 +177,29 @@ def delete_note(nid):
     note_delete(nid)
     return jsonify({"ok": True})
 
-# ════════════════════════════════════════════════════════
-#  API — ADMIN
-# ════════════════════════════════════════════════════════
+# ── ADMIN ────────────────────────────────────────────────
 
 @app.route("/admin/check", methods=["POST"])
 def admin_check():
     d  = request.get_json(force=True)
-    pw = d.get("password", "").strip()
+    pw = d.get("password","").strip()
     if check_pw(pw):
-        return jsonify({"ok": True, "r2_configured": bool(R2_PUBLIC_URL)})
+        return jsonify({"ok": True})
     return jsonify({"ok": False}), 403
 
 @app.route("/admin/manuals")
 def list_manuals():
-    pw = request.args.get("password", "").strip()
+    pw = request.args.get("password","").strip()
     if not check_pw(pw):
         return jsonify({"error": "Contraseña incorrecta"}), 403
     counts = {}
     for p in manuals:
-        counts[p["manual"]] = counts.get(p["manual"], 0) + 1
-    return jsonify([{"manual": k, "pages": v} for k, v in sorted(counts.items())])
+        counts[p["manual"]] = counts.get(p["manual"],0) + 1
+    return jsonify([{"manual":k,"pages":v} for k,v in sorted(counts.items())])
 
 @app.route("/admin/config")
 def admin_config():
-    """Devuelve configuración no sensible para mostrar en Admin."""
-    pw = request.args.get("password", "").strip()
+    pw = request.args.get("password","").strip()
     if not check_pw(pw):
         return jsonify({"error": "Contraseña incorrecta"}), 403
     return jsonify({
@@ -241,8 +208,8 @@ def admin_config():
         "total_pages":   len(manuals),
         "total_manuals": len(set(p["manual"] for p in manuals)),
         "notes_count":   len(notes_load()),
+        "build":         BUILD_TIME,
     })
 
-# ════════════════════════════════════════════════════════
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

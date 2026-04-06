@@ -243,23 +243,17 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
         <div class="admin-section">
             <h3>➕ AGREGAR NUEVO MANUAL</h3>
             <div class="info-box">
-                <b>Paso 1</b> — En tu laptop, extrae el texto del PDF:<br>
-                Ejecuta: <code>python scripts/extract_pages.py</code><br><br>
-                <b>Paso 2</b> — Sube el JSON a GitHub:<br>
-                <code>git add data/pages/</code><br>
-                <code>git commit -m "Nuevo manual"</code><br>
-                <code>git push</code><br><br>
-                <b>Paso 3</b> — Sube el PDF a Cloudflare R2:<br>
+                <b>Paso 1</b> — En tu laptop, extrae el texto del PDF y sube el JSON a GitHub:<br>
+                <code>git add data/pages/</code> → <code>git commit</code> → <code>git push</code><br><br>
+                <b>Paso 2</b> — Sube el PDF a Cloudflare R2:<br>
                 R2 → bucket <code>interlocks-manuals</code> → Upload
             </div>
         </div>
         <div class="admin-section">
             <h3>📝 APUNTES PERMANENTES</h3>
             <div class="info-box">
-                Los apuntes se guardan en el servidor.<br>
-                Para que persistan tras un reinicio de Render,<br>
-                copia <code>data/notes.json</code> a tu proyecto y haz push a GitHub.<br><br>
-                Formato: <code>{"id":"...","title":"...","text":"...","tags":[]}</code>
+                Para que los apuntes persistan tras un reinicio de Render,<br>
+                copia <code>data/notes.json</code> a tu repo local y haz push a GitHub.
             </div>
         </div>
         <div style="text-align:center;margin-top:4px">
@@ -280,7 +274,8 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
     </button>
 </nav>
 
-<script src="/static/app.js"></script>
+<!-- Cache-busting: build_time cambia con cada deploy de Render -->
+<script src="/static/app.js?v={{ build_time }}"></script>
 <script>
 function showScreen(name) {
     document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
@@ -292,7 +287,7 @@ function showScreen(name) {
 }
 if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js", {updateViaCache:"none"})
-        .then(reg => { reg.update(); })
+        .then(reg => reg.update())
         .catch(e => console.error("SW:", e));
 }
 </script>
