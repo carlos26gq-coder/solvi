@@ -20,3 +20,7 @@ ngrok.exe http 5000 ( EN LA CARPETA DEL NGROK - DESCARGAS)
 
 a veces se queda grabado worker anterior, para eso buscar el worker del gnrok o el link, eliminar entrando en:
 chrome://serviceworker-internals/
+
+---
+pdf almacenados link en cloudflare
+https://pub-ec13dffb5c7246359cd9109c52d257f5.r2.dev

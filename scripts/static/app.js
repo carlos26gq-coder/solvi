@@ -1,4 +1,10 @@
-console.log("✅ app.js v6");
+console.log("✅ app.js v7");
+
+/* ══════════════════════════════════════════
+   EXPONER FUNCIONES GLOBALMENTE
+   Los botones usan onclick="" en el HTML,
+   las funciones deben estar en window.
+══════════════════════════════════════════ */
 
 /* ══════════════════════════════════════════
    RED
@@ -23,7 +29,7 @@ actualizarRed();
    CACHÉ OFFLINE
 ══════════════════════════════════════════ */
 let manualsData = null;
-let r2BaseUrl   = "";   // se llena al primera búsqueda online
+let r2BaseUrl   = localStorage.getItem("r2BaseUrl") || "";
 
 async function cargarManuales() {
     if (manualsData) return manualsData;
@@ -42,10 +48,12 @@ function esc(s) {
         .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
+
 function highlight(text, kw) {
     if (!kw) return esc(text);
     return esc(text).replace(new RegExp(escRe(kw),"gi"), m => `<mark>${m}</mark>`);
 }
+
 function toast(msg, type="ok") {
     document.querySelectorAll(".toast").forEach(t => t.remove());
     const t = document.createElement("div");
@@ -56,17 +64,84 @@ function toast(msg, type="ok") {
 }
 
 /* ══════════════════════════════════════════
-   PDF — abrir en R2 en página exacta
+   PDF VIEWER
+   - Desktop Chrome/Edge: abre PDF directo con #page
+   - Android/iOS móvil: usa Google Docs Viewer
+     (permite ver el PDF en el navegador sin descargar)
 ══════════════════════════════════════════ */
-function abrirPDF(manual, page) {
+window.abrirPDF = function(manual, page) {
     if (!r2BaseUrl) {
-        toast("⚠️ URL de PDFs no configurada en el servidor","err");
+        toast("⚠️ PDFs no configurados aún","err");
         return;
     }
-    // El nombre del archivo en R2 debe coincidir con el nombre del manual
     const filename = encodeURIComponent(manual + ".pdf");
-    window.open(`${r2BaseUrl}/${filename}#page=${page}`, "_blank");
+    const pdfUrl   = `${r2BaseUrl}/${filename}`;
+
+    // Detectar si es móvil
+    const esMobil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (esMobil) {
+        // Google Docs Viewer — muestra el PDF en el navegador sin descargar
+        // No soporta ir a página exacta, pero al menos muestra el PDF
+        const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(pdfUrl)}&embedded=true`;
+        // Abrir visor interno
+        mostrarVisorPDF(viewerUrl, manual, page, pdfUrl);
+    } else {
+        // Desktop: abrir directo con #page
+        window.open(`${pdfUrl}#page=${page}`, "_blank");
+    }
+};
+
+function mostrarVisorPDF(viewerUrl, manual, page, pdfUrl) {
+    // Crear modal con iframe
+    let modal = document.getElementById("pdfModal");
+    if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "pdfModal";
+        modal.style.cssText = `
+            position:fixed;inset:0;z-index:9999;background:#0b0f1a;
+            display:flex;flex-direction:column;
+        `;
+        document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;
+                    padding:12px 16px;background:#111827;border-bottom:1px solid #1e293b;
+                    flex-shrink:0;">
+            <div>
+                <div style="font-size:.75rem;color:#00d4ff;font-family:monospace;text-transform:uppercase">
+                    📘 ${esc(manual)} — Página ${page}
+                </div>
+                <div style="font-size:.68rem;color:#64748b;margin-top:2px">
+                    Si no carga, usa el botón de descarga ↓
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+                <a href="${pdfUrl}" download
+                   style="font-size:.72rem;padding:5px 10px;border-radius:6px;
+                          background:rgba(0,212,255,.1);color:#00d4ff;
+                          border:1px solid rgba(0,212,255,.3);text-decoration:none">
+                    ⬇ Descargar
+                </a>
+                <button onclick="cerrarVisorPDF()"
+                        style="background:#ef4444;border:none;color:#fff;
+                               border-radius:6px;padding:5px 10px;cursor:pointer;
+                               font-size:.8rem">✕ Cerrar</button>
+            </div>
+        </div>
+        <iframe src="${viewerUrl}"
+                style="flex:1;border:none;width:100%;background:#fff;"
+                allowfullscreen>
+        </iframe>
+    `;
+    modal.style.display = "flex";
 }
+
+window.cerrarVisorPDF = function() {
+    const modal = document.getElementById("pdfModal");
+    if (modal) modal.style.display = "none";
+};
 
 /* ══════════════════════════════════════════
    UI STATES
@@ -104,16 +179,15 @@ function renderResultados(results, keyword, mode) {
         card.className = `result-card${isNote ? " note-card" : ""}`;
         card.style.animationDelay = `${i * 30}ms`;
 
-        const badge   = isNote ? "note-badge" : "manual-badge";
-        const mLabel  = isNote ? "📝 Apunte"  : esc(r.manual);
-        const pLabel  = isNote ? esc(r.page)   : `Página ${r.page}`;
+        const badge  = isNote ? "note-badge" : "manual-badge";
+        const mLabel = isNote ? "📝 Apunte"  : esc(r.manual);
+        const pLabel = isNote ? esc(r.page)   : `Página ${r.page}`;
         const tagsHtml = isNote && r.tags?.length
             ? `<div class="card-tags">${r.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>`
             : "";
 
-        // Botón PDF solo si hay R2 configurado y es un manual
         const pdfBtn = (!isNote && r2BaseUrl)
-            ? `<button class="btn-pdf" onclick="abrirPDF('${esc(r.manual)}',${r.page})">📖 Pág. ${r.page}</button>`
+            ? `<button class="btn-pdf" onclick="abrirPDF('${esc(r.manual)}',${r.page})">📖 Ver PDF pág. ${r.page}</button>`
             : "";
 
         card.innerHTML = `
@@ -175,15 +249,17 @@ async function buscarOnline(kw, mf) {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
-    // Guardar la URL de R2 que viene del servidor
-    if (data.r2_url) r2BaseUrl = data.r2_url;
+    if (data.r2_url) {
+        r2BaseUrl = data.r2_url;
+        localStorage.setItem("r2BaseUrl", r2BaseUrl); // guardar para offline
+    }
     return data.results || [];
 }
 
 /* ══════════════════════════════════════════
    CONTROLADOR BÚSQUEDA
 ══════════════════════════════════════════ */
-async function iniciarBusqueda() {
+window.iniciarBusqueda = async function() {
     const kw = document.getElementById("q").value.trim();
     const mf = document.getElementById("manual").value.trim();
     if (!kw) {
@@ -195,8 +271,7 @@ async function iniciarBusqueda() {
 
     showState("loading");
     const btn = document.getElementById("btnBuscar");
-    btn.classList.add("loading");
-    btn.textContent = "Buscando...";
+    if (btn) { btn.classList.add("loading"); btn.textContent = "Buscando..."; }
 
     try {
         let results, mode;
@@ -214,39 +289,55 @@ async function iniciarBusqueda() {
             `<div class="result-card"><span style="color:var(--danger)">❌ ${esc(e.message)}</span></div>`;
         showState("results");
     } finally {
-        btn.classList.remove("loading");
-        btn.textContent = "Buscar";
+        if (btn) { btn.classList.remove("loading"); btn.textContent = "Buscar"; }
     }
-}
+};
 
 /* ══════════════════════════════════════════
-   EVENTOS
+   INIT — registrar eventos al cargar
 ══════════════════════════════════════════ */
-window.addEventListener("load", () => {
-    const q = document.getElementById("q");
-    const m = document.getElementById("manual");
-    if (q) { q.disabled = false; q.readOnly = false; setTimeout(() => q.focus(), 300); }
-    if (m) m.disabled = false;
+function initEventos() {
+    const q   = document.getElementById("q");
+    const m   = document.getElementById("manual");
+    const btn = document.getElementById("btnBuscar");
+
+    if (q) {
+        q.disabled = false;
+        q.readOnly = false;
+        q.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();window.iniciarBusqueda();} });
+        q.addEventListener("keyup",   e => { if(e.key==="Enter"){e.preventDefault();window.iniciarBusqueda();} });
+    }
+    if (m) {
+        m.disabled = false;
+        m.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();window.iniciarBusqueda();} });
+    }
+    // Botón buscar — doble registro para mayor compatibilidad móvil
+    if (btn) {
+        btn.onclick = null;
+        btn.addEventListener("click",      () => window.iniciarBusqueda());
+        btn.addEventListener("touchstart", (e) => { e.preventDefault(); window.iniciarBusqueda(); }, {passive:false});
+    }
+
+    const adminPass = document.getElementById("adminPass");
+    if (adminPass) {
+        adminPass.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();window.adminLogin();} });
+    }
+
     showState("welcome");
     if (navigator.onLine) sincronizarPendientes();
 
-    document.getElementById("btnBuscar")
-        ?.addEventListener("click", iniciarBusqueda);
+    // Focus en input de búsqueda (solo desktop)
+    if (!/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+        setTimeout(() => q?.focus(), 300);
+    }
+}
 
-    [q, m].forEach(el => {
-        el?.addEventListener("keydown", e => {
-            if (e.key === "Enter") { e.preventDefault(); iniciarBusqueda(); }
-        });
-        el?.addEventListener("keyup", e => {
-            if (e.key === "Enter") { e.preventDefault(); iniciarBusqueda(); }
-        });
-    });
-
-    document.getElementById("adminPass")
-        ?.addEventListener("keydown", e => {
-            if (e.key === "Enter") { e.preventDefault(); adminLogin(); }
-        });
-});
+// Ejecutar cuando el DOM esté listo
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initEventos);
+} else {
+    initEventos();
+}
 
 /* ══════════════════════════════════════════
    APUNTES — localStorage
@@ -267,8 +358,7 @@ function localNoteDelete(id) {
     localNotesSave(localNotesLoad().filter(n => n.id !== id));
 }
 
-// Pendientes (creados offline)
-function pendingLoad()     { try { return JSON.parse(localStorage.getItem("interlocks_pending")||"[]"); } catch{return[];} }
+function pendingLoad()     { try{return JSON.parse(localStorage.getItem("interlocks_pending")||"[]");}catch{return[];} }
 function pendingSave(p)    { localStorage.setItem("interlocks_pending", JSON.stringify(p)); }
 function pendingAdd(note)  { const p=pendingLoad(); p.push(note); pendingSave(p); }
 function pendingRemove(id) { pendingSave(pendingLoad().filter(n=>n.id!==id)); }
@@ -292,13 +382,14 @@ async function sincronizarPendientes() {
 }
 
 /* ══════════════════════════════════════════
-   APUNTES — cargar
+   APUNTES — cargar y renderizar
 ══════════════════════════════════════════ */
-async function loadNotes() {
+window.loadNotes = async function() {
     const list  = document.getElementById("notesList");
     const empty = document.getElementById("notesEmpty");
+    if (!list) return;
     list.innerHTML = `<div class="spinner-wrap"><div class="spinner"></div></div>`;
-    empty.style.display = "none";
+    if (empty) empty.style.display = "none";
 
     let notes = [];
     if (navigator.onLine) {
@@ -311,14 +402,15 @@ async function loadNotes() {
         notes = localNotesLoad();
     }
     renderNotes(notes);
-}
+};
 
 function renderNotes(notes) {
     const list  = document.getElementById("notesList");
     const empty = document.getElementById("notesEmpty");
+    if (!list) return;
     list.innerHTML = "";
-    if (!notes?.length) { empty.style.display = "flex"; return; }
-    empty.style.display = "none";
+    if (!notes?.length) { if(empty) empty.style.display="flex"; return; }
+    if (empty) empty.style.display = "none";
 
     notes.forEach(note => {
         const div = document.createElement("div");
@@ -347,32 +439,39 @@ function renderNotes(notes) {
 /* ══════════════════════════════════════════
    APUNTES — formulario
 ══════════════════════════════════════════ */
-function toggleNoteForm() {
+window.toggleNoteForm = function() {
     const form = document.getElementById("noteForm");
-    if (form.style.display !== "none") { cancelNoteForm(); return; }
+    if (!form) return;
+    if (form.style.display !== "none") { window.cancelNoteForm(); return; }
     form.style.display = "block";
     document.getElementById("noteFormTitle").textContent = "✏️ NUEVO APUNTE";
-    ["editingId","noteTitle","noteText","noteTags"].forEach(id =>
-        document.getElementById(id).value = "");
-    document.getElementById("noteTitle").focus();
-}
-function cancelNoteForm() {
-    document.getElementById("noteForm").style.display = "none";
-}
-function editNote(id) {
+    ["editingId","noteTitle","noteText","noteTags"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+    });
+    setTimeout(() => document.getElementById("noteTitle")?.focus(), 100);
+};
+
+window.cancelNoteForm = function() {
+    const form = document.getElementById("noteForm");
+    if (form) form.style.display = "none";
+};
+
+window.editNote = function(id) {
     const note = localNotesLoad().find(n=>n.id===id);
     if (!note) return;
-    document.getElementById("noteForm").style.display = "block";
+    const form = document.getElementById("noteForm");
+    if (form) form.style.display = "block";
     document.getElementById("noteFormTitle").textContent = "✏️ EDITAR APUNTE";
     document.getElementById("editingId").value = id;
     document.getElementById("noteTitle").value = note.title;
     document.getElementById("noteText").value  = note.text;
     document.getElementById("noteTags").value  = (note.tags||[]).join(", ");
-    document.getElementById("noteTitle").focus();
-    document.getElementById("noteForm").scrollIntoView({behavior:"smooth"});
-}
+    setTimeout(() => document.getElementById("noteTitle")?.focus(), 100);
+    form?.scrollIntoView({behavior:"smooth"});
+};
 
-async function saveNote() {
+window.saveNote = async function() {
     const id    = document.getElementById("editingId").value.trim();
     const title = document.getElementById("noteTitle").value.trim();
     const text  = document.getElementById("noteText").value.trim();
@@ -399,12 +498,12 @@ async function saveNote() {
     }
 
     localNoteSync(note);
-    cancelNoteForm();
-    loadNotes();
+    window.cancelNoteForm();
+    window.loadNotes();
     toast(id ? "✅ Apunte actualizado" : "✅ Apunte guardado");
-}
+};
 
-async function deleteNote(id) {
+window.deleteNote = async function(id) {
     if (!confirm("¿Eliminar este apunte?")) return;
     if (navigator.onLine) {
         try { await fetch(`/notes/${id}`, {method:"DELETE"}); } catch {}
@@ -412,18 +511,22 @@ async function deleteNote(id) {
     localNoteDelete(id);
     pendingRemove(id);
     document.getElementById(`note-${id}`)?.remove();
-    if (!document.getElementById("notesList").children.length)
-        document.getElementById("notesEmpty").style.display = "flex";
+    const list = document.getElementById("notesList");
+    if (list && !list.children.length) {
+        const empty = document.getElementById("notesEmpty");
+        if (empty) empty.style.display = "flex";
+    }
     toast("🗑 Apunte eliminado");
-}
+};
 
 /* ══════════════════════════════════════════
-   ADMIN — login
+   ADMIN
 ══════════════════════════════════════════ */
 let adminPassword = "";
 
-async function adminLogin() {
-    const pw = document.getElementById("adminPass").value.trim();
+window.adminLogin = async function() {
+    const pwEl = document.getElementById("adminPass");
+    const pw   = pwEl ? pwEl.value.trim() : "";
     if (!pw) { toast("Ingresa la contraseña","err"); return; }
     try {
         const r = await fetch("/admin/check", {
@@ -443,24 +546,25 @@ async function adminLogin() {
     } catch {
         toast("❌ Sin conexión al servidor","err");
     }
-}
+};
 
-function adminLogout() {
+window.adminLogout = function() {
     adminPassword = "";
     document.getElementById("adminLock").style.display    = "flex";
     document.getElementById("adminContent").style.display = "none";
-    document.getElementById("adminPass").value = "";
-}
+    const pwEl = document.getElementById("adminPass");
+    if (pwEl) pwEl.value = "";
+};
 
-/* ══════════════════════════════════════════
-   ADMIN — config y estado
-══════════════════════════════════════════ */
 async function loadAdminConfig() {
     try {
         const r    = await fetch(`/admin/config?password=${encodeURIComponent(adminPassword)}`);
         const data = await r.json();
         if (!r.ok) return;
-
+        if (data.r2_url && data.r2_url !== "No configurada") {
+            r2BaseUrl = data.r2_url;
+            localStorage.setItem("r2BaseUrl", r2BaseUrl);
+        }
         document.getElementById("configInfo").innerHTML = `
             <div class="config-row"><span>📚 Total páginas</span><span>${data.total_pages}</span></div>
             <div class="config-row"><span>📘 Manuales</span><span>${data.total_manuals}</span></div>
@@ -468,26 +572,25 @@ async function loadAdminConfig() {
             <div class="config-row">
                 <span>☁️ Cloudflare R2</span>
                 <span style="color:${data.r2_configured?'var(--green)':'var(--warn)'}">
-                    ${data.r2_configured ? '✅ Configurado' : '⚠️ No configurado'}
+                    ${data.r2_configured?"✅ Configurado":"⚠️ No configurado"}
                 </span>
             </div>
         `;
-
-        // Actualizar r2BaseUrl si está disponible
-        if (data.r2_url && data.r2_url !== "No configurada") {
-            r2BaseUrl = data.r2_url;
-        }
-    } catch {}
+    } catch(e) {
+        document.getElementById("configInfo").innerHTML =
+            `<p style="color:var(--danger);font-size:.8rem">Error al cargar config</p>`;
+    }
 }
 
-async function loadManualList() {
+window.loadManualList = async function() {
     const div = document.getElementById("manualList");
+    if (!div) return;
     div.innerHTML = `<div class="spinner-wrap" style="padding:12px 0"><div class="spinner"></div></div>`;
     try {
         const r    = await fetch(`/admin/manuals?password=${encodeURIComponent(adminPassword)}`);
         const data = await r.json();
-        if (!r.ok) { div.innerHTML = `<p style="color:var(--danger)">${data.error}</p>`; return; }
-        div.innerHTML = data.map(m => `
+        if (!r.ok) { div.innerHTML=`<p style="color:var(--danger)">${data.error}</p>`; return; }
+        div.innerHTML = data.map(m=>`
             <div class="manual-row">
                 <span style="color:var(--text)">${esc(m.manual)}</span>
                 <span>${m.pages} págs.</span>
@@ -495,4 +598,4 @@ async function loadManualList() {
     } catch(e) {
         div.innerHTML = `<p style="color:var(--danger)">Error: ${e.message}</p>`;
     }
-}
+};
