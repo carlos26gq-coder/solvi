@@ -1,21 +1,19 @@
-console.log("✅ app.js v7");
+console.log("✅ app.js v8");
 
-/* ══════════════════════════════════════════
-   EXPONER FUNCIONES GLOBALMENTE
-   Los botones usan onclick="" en el HTML,
-   las funciones deben estar en window.
-══════════════════════════════════════════ */
+/* ══════════════════════════════════
+   TODAS las funciones van en window
+   para que onclick="" en HTML funcione
+   en todos los dispositivos y navegadores.
+══════════════════════════════════ */
 
-/* ══════════════════════════════════════════
-   RED
-══════════════════════════════════════════ */
+// ─── ESTADO DE RED ───────────────────────────────────────
 function actualizarRed() {
     const el  = document.getElementById("estadoRed");
     const txt = document.getElementById("estadoTxt");
     if (navigator.onLine) {
         el.className = "online";
         txt.textContent = "Conectado";
-        sincronizarPendientes();
+        _sincronizarPendientes();
     } else {
         el.className = "offline";
         txt.textContent = "Sin conexión";
@@ -25,169 +23,108 @@ window.addEventListener("online",  actualizarRed);
 window.addEventListener("offline", actualizarRed);
 actualizarRed();
 
-/* ══════════════════════════════════════════
-   CACHÉ OFFLINE
-══════════════════════════════════════════ */
-let manualsData = null;
-let r2BaseUrl   = localStorage.getItem("r2BaseUrl") || "";
+// ─── DATOS ───────────────────────────────────────────────
+let _manuales = null;
+let _r2Url    = localStorage.getItem("r2Url") || "";
 
-async function cargarManuales() {
-    if (manualsData) return manualsData;
+async function _cargarManuales() {
+    if (_manuales) return _manuales;
     const r = await fetch("/data/all_manuals.json");
     if (!r.ok) throw new Error("No se pudo cargar all_manuals.json");
-    manualsData = await r.json();
-    return manualsData;
+    _manuales = await r.json();
+    return _manuales;
 }
 
-/* ══════════════════════════════════════════
-   HELPERS
-══════════════════════════════════════════ */
-function esc(s) {
+// ─── HELPERS ─────────────────────────────────────────────
+function _esc(s) {
     return String(s)
         .replace(/&/g,"&amp;").replace(/</g,"&lt;")
         .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
-function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
+function _escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
 
-function highlight(text, kw) {
-    if (!kw) return esc(text);
-    return esc(text).replace(new RegExp(escRe(kw),"gi"), m => `<mark>${m}</mark>`);
+function _hi(text, kw) {
+    if (!kw) return _esc(text);
+    return _esc(text).replace(new RegExp(_escRe(kw),"gi"), m=>`<mark>${m}</mark>`);
 }
 
-function toast(msg, type="ok") {
-    document.querySelectorAll(".toast").forEach(t => t.remove());
+function _toast(msg, tipo="ok") {
+    document.querySelectorAll(".toast").forEach(t=>t.remove());
     const t = document.createElement("div");
-    t.className = `toast ${type}`;
+    t.className = `toast ${tipo}`;
     t.textContent = msg;
     document.body.appendChild(t);
-    setTimeout(() => t.remove(), 3500);
+    setTimeout(()=>t.remove(), 3500);
 }
 
-/* ══════════════════════════════════════════
-   PDF VIEWER
-   - Desktop Chrome/Edge: abre PDF directo con #page
-   - Android/iOS móvil: usa Google Docs Viewer
-     (permite ver el PDF en el navegador sin descargar)
-══════════════════════════════════════════ */
+// ─── PDF ─────────────────────────────────────────────────
+// Estrategia simple y universal:
+// Abre el PDF directamente en nueva pestaña.
+// El navegador del dispositivo decide cómo mostrarlo.
+// En Chrome desktop: muestra con #page=N
+// En Android: descarga o abre según el navegador instalado
+// Sin visor iframe (falla con PDFs grandes)
 window.abrirPDF = function(manual, page) {
-    if (!r2BaseUrl) {
-        toast("⚠️ PDFs no configurados aún","err");
+    if (!_r2Url) {
+        _toast("⚠️ URL de PDFs no configurada","err");
         return;
     }
-    const filename = encodeURIComponent(manual + ".pdf");
-    const pdfUrl   = `${r2BaseUrl}/${filename}`;
+    const pdfUrl = `${_r2Url}/${encodeURIComponent(manual + ".pdf")}`;
 
-    // Detectar si es móvil
-    const esMobil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-    if (esMobil) {
-        // Google Docs Viewer — muestra el PDF en el navegador sin descargar
-        // No soporta ir a página exacta, pero al menos muestra el PDF
-        const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(pdfUrl)}&embedded=true`;
-        // Abrir visor interno
-        mostrarVisorPDF(viewerUrl, manual, page, pdfUrl);
-    } else {
-        // Desktop: abrir directo con #page
-        window.open(`${pdfUrl}#page=${page}`, "_blank");
-    }
+    // Chrome desktop: #page funciona nativamente
+    // Móviles: ignorarán #page pero al menos abrirán el PDF
+    window.open(`${pdfUrl}#page=${page}`, "_blank");
 };
 
-function mostrarVisorPDF(viewerUrl, manual, page, pdfUrl) {
-    // Crear modal con iframe
-    let modal = document.getElementById("pdfModal");
-    if (!modal) {
-        modal = document.createElement("div");
-        modal.id = "pdfModal";
-        modal.style.cssText = `
-            position:fixed;inset:0;z-index:9999;background:#0b0f1a;
-            display:flex;flex-direction:column;
-        `;
-        document.body.appendChild(modal);
+// ─── UI STATES ───────────────────────────────────────────
+function _mostrar(estado) {
+    ["welcomeState","spinnerState","emptyState","resultsList","metaBar"]
+        .forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = "none";
+        });
+    const mapa = {
+        welcome: ["welcomeState","flex"],
+        loading: ["spinnerState","block"],
+        empty:   ["emptyState","flex"],
+        results: ["resultsList","block"],
+    };
+    if (mapa[estado]) {
+        const el = document.getElementById(mapa[estado][0]);
+        if (el) el.style.display = mapa[estado][1];
     }
-
-    modal.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;
-                    padding:12px 16px;background:#111827;border-bottom:1px solid #1e293b;
-                    flex-shrink:0;">
-            <div>
-                <div style="font-size:.75rem;color:#00d4ff;font-family:monospace;text-transform:uppercase">
-                    📘 ${esc(manual)} — Página ${page}
-                </div>
-                <div style="font-size:.68rem;color:#64748b;margin-top:2px">
-                    Si no carga, usa el botón de descarga ↓
-                </div>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center">
-                <a href="${pdfUrl}" download
-                   style="font-size:.72rem;padding:5px 10px;border-radius:6px;
-                          background:rgba(0,212,255,.1);color:#00d4ff;
-                          border:1px solid rgba(0,212,255,.3);text-decoration:none">
-                    ⬇ Descargar
-                </a>
-                <button onclick="cerrarVisorPDF()"
-                        style="background:#ef4444;border:none;color:#fff;
-                               border-radius:6px;padding:5px 10px;cursor:pointer;
-                               font-size:.8rem">✕ Cerrar</button>
-            </div>
-        </div>
-        <iframe src="${viewerUrl}"
-                style="flex:1;border:none;width:100%;background:#fff;"
-                allowfullscreen>
-        </iframe>
-    `;
-    modal.style.display = "flex";
-}
-
-window.cerrarVisorPDF = function() {
-    const modal = document.getElementById("pdfModal");
-    if (modal) modal.style.display = "none";
-};
-
-/* ══════════════════════════════════════════
-   UI STATES
-══════════════════════════════════════════ */
-function showState(state) {
-    ["welcomeState","spinnerState","emptyState","resultsList","metaBar"].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = "none";
-    });
-    if (state === "welcome") document.getElementById("welcomeState").style.display = "flex";
-    if (state === "loading") document.getElementById("spinnerState").style.display = "block";
-    if (state === "empty")   document.getElementById("emptyState").style.display   = "flex";
-    if (state === "results") {
-        document.getElementById("resultsList").style.display = "block";
-        document.getElementById("metaBar").style.display     = "flex";
+    if (estado === "results") {
+        const mb = document.getElementById("metaBar");
+        if (mb) mb.style.display = "flex";
     }
 }
 
-/* ══════════════════════════════════════════
-   RENDER RESULTADOS
-══════════════════════════════════════════ */
-function renderResultados(results, keyword, mode) {
-    const list = document.getElementById("resultsList");
-    list.innerHTML = "";
+// ─── RENDER RESULTADOS ───────────────────────────────────
+function _renderResultados(results, kw, modo) {
+    const lista = document.getElementById("resultsList");
+    lista.innerHTML = "";
 
-    if (!results || results.length === 0) { showState("empty"); return; }
+    if (!results?.length) { _mostrar("empty"); return; }
 
     document.getElementById("countNum").textContent = results.length;
-    document.getElementById("modeTag").textContent  = mode === "online" ? "ONLINE" : "OFFLINE";
-    showState("results");
+    document.getElementById("modeTag").textContent  = modo === "online" ? "ONLINE" : "OFFLINE";
+    _mostrar("results");
 
     results.forEach((r, i) => {
-        const isNote = r.type === "note";
+        const esNota = r.type === "note";
         const card   = document.createElement("div");
-        card.className = `result-card${isNote ? " note-card" : ""}`;
+        card.className = `result-card${esNota ? " note-card" : ""}`;
         card.style.animationDelay = `${i * 30}ms`;
 
-        const badge  = isNote ? "note-badge" : "manual-badge";
-        const mLabel = isNote ? "📝 Apunte"  : esc(r.manual);
-        const pLabel = isNote ? esc(r.page)   : `Página ${r.page}`;
-        const tagsHtml = isNote && r.tags?.length
-            ? `<div class="card-tags">${r.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>`
+        const badge  = esNota ? "note-badge" : "manual-badge";
+        const mLabel = esNota ? "📝 Apunte" : _esc(r.manual);
+        const pLabel = esNota ? _esc(r.page) : `Página ${r.page}`;
+        const tags   = esNota && r.tags?.length
+            ? `<div class="card-tags">${r.tags.map(t=>`<span class="tag">${_esc(t)}</span>`).join("")}</div>`
             : "";
 
-        const pdfBtn = (!isNote && r2BaseUrl)
-            ? `<button class="btn-pdf" onclick="abrirPDF('${esc(r.manual)}',${r.page})">📖 Ver PDF pág. ${r.page}</button>`
+        const pdfBtn = (!esNota && _r2Url)
+            ? `<button class="btn-pdf" onclick="abrirPDF('${_esc(r.manual)}',${r.page})">📖 Ver PDF — pág. ${r.page}</button>`
             : "";
 
         card.innerHTML = `
@@ -195,22 +132,20 @@ function renderResultados(results, keyword, mode) {
                 <span class="card-manual ${badge}">${mLabel}</span>
                 <span class="card-page">📄 ${pLabel}</span>
             </div>
-            <div class="card-ctx">${highlight(r.context, keyword)}</div>
+            <div class="card-ctx">${_hi(r.context, kw)}</div>
             <div class="card-footer">
-                <div class="card-action">${esc(r.action)}</div>
+                <div class="card-action">${_esc(r.action)}</div>
                 ${pdfBtn}
             </div>
-            ${tagsHtml}
+            ${tags}
         `;
-        list.appendChild(card);
+        lista.appendChild(card);
     });
 }
 
-/* ══════════════════════════════════════════
-   BÚSQUEDA OFFLINE
-══════════════════════════════════════════ */
-async function buscarOffline(kw, mf) {
-    const data    = await cargarManuales();
+// ─── BÚSQUEDA OFFLINE ────────────────────────────────────
+async function _buscarOffline(kw, mf) {
+    const data    = await _cargarManuales();
     const results = [];
     const kwl     = kw.toLowerCase();
     const mfl     = mf.toLowerCase();
@@ -223,233 +158,204 @@ async function buscarOffline(kw, mf) {
         const ctx = page.text
             .substring(Math.max(0,pos-80), Math.min(page.text.length,pos+120))
             .replace(/\n+/g," ").trim();
-        results.push({ type:"manual", manual:page.manual, page:page.page,
-                       context:ctx, action:"Revisar sección completa del manual" });
+        results.push({
+            type:"manual", manual:page.manual, page:page.page,
+            context:ctx, action:"Revisar sección completa del manual"
+        });
     }
 
     if (!mfl || mfl === "apuntes") {
-        for (const note of localNotesLoad()) {
-            const blob = (note.title+" "+note.text+" "+(note.tags||[]).join(" ")).toLowerCase();
-            if (blob.includes(kwl)) {
-                results.push({ type:"note", id:note.id, manual:"apuntes",
-                               page:note.title, context:note.text.substring(0,220),
-                               action:"Apunte personal", tags:note.tags||[] });
-            }
+        for (const nota of _notasLocales()) {
+            const blob = (nota.title+" "+nota.text+" "+(nota.tags||[]).join(" ")).toLowerCase();
+            if (!blob.includes(kwl)) continue;
+            results.push({
+                type:"note", id:nota.id, manual:"apuntes",
+                page:nota.title, context:nota.text.substring(0,220),
+                action:"Apunte personal", tags:nota.tags||[]
+            });
         }
     }
     return results;
 }
 
-/* ══════════════════════════════════════════
-   BÚSQUEDA ONLINE
-══════════════════════════════════════════ */
-async function buscarOnline(kw, mf) {
+// ─── BÚSQUEDA ONLINE ─────────────────────────────────────
+async function _buscarOnline(kw, mf) {
     let url = `/search?q=${encodeURIComponent(kw)}`;
     if (mf) url += `&manual=${encodeURIComponent(mf)}`;
-    const r = await fetch(url);
+    const r    = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     if (data.r2_url) {
-        r2BaseUrl = data.r2_url;
-        localStorage.setItem("r2BaseUrl", r2BaseUrl); // guardar para offline
+        _r2Url = data.r2_url;
+        localStorage.setItem("r2Url", _r2Url);
     }
     return data.results || [];
 }
 
-/* ══════════════════════════════════════════
-   CONTROLADOR BÚSQUEDA
-══════════════════════════════════════════ */
+// ─── BUSCAR (llamado por onclick del botón) ───────────────
 window.iniciarBusqueda = async function() {
-    const kw = document.getElementById("q").value.trim();
-    const mf = document.getElementById("manual").value.trim();
+    const kwEl = document.getElementById("q");
+    const mfEl = document.getElementById("manual");
+    const btn  = document.getElementById("btnBuscar");
+    const kw   = kwEl?.value.trim() || "";
+    const mf   = mfEl?.value.trim() || "";
+
     if (!kw) {
-        const inp = document.getElementById("q");
-        inp.style.borderColor = "var(--danger)";
-        setTimeout(() => inp.style.borderColor = "", 1200);
+        if (kwEl) { kwEl.style.borderColor="var(--danger)"; setTimeout(()=>kwEl.style.borderColor="",1200); }
         return;
     }
 
-    showState("loading");
-    const btn = document.getElementById("btnBuscar");
+    _mostrar("loading");
     if (btn) { btn.classList.add("loading"); btn.textContent = "Buscando..."; }
 
     try {
-        let results, mode;
+        let results, modo;
         if (navigator.onLine) {
-            try   { results = await buscarOnline(kw, mf); mode = "online"; }
-            catch { results = await buscarOffline(kw, mf); mode = "offline"; }
+            try   { results = await _buscarOnline(kw, mf); modo = "online"; }
+            catch { results = await _buscarOffline(kw, mf); modo = "offline"; }
         } else {
-            results = await buscarOffline(kw, mf);
-            mode = "offline";
+            results = await _buscarOffline(kw, mf);
+            modo = "offline";
         }
-        renderResultados(results, kw, mode);
+        _renderResultados(results, kw, modo);
     } catch(e) {
         console.error(e);
-        document.getElementById("resultsList").innerHTML =
-            `<div class="result-card"><span style="color:var(--danger)">❌ ${esc(e.message)}</span></div>`;
-        showState("results");
+        const l = document.getElementById("resultsList");
+        if (l) l.innerHTML = `<div class="result-card"><span style="color:var(--danger)">❌ ${_esc(e.message)}</span></div>`;
+        _mostrar("results");
     } finally {
         if (btn) { btn.classList.remove("loading"); btn.textContent = "Buscar"; }
     }
 };
 
-/* ══════════════════════════════════════════
-   INIT — registrar eventos al cargar
-══════════════════════════════════════════ */
-function initEventos() {
-    const q   = document.getElementById("q");
-    const m   = document.getElementById("manual");
-    const btn = document.getElementById("btnBuscar");
+// ─── INIT (solo Enter en inputs, sin tocar botones) ───────
+// Los botones ya tienen onclick en el HTML.
+// Aquí solo se registra el Enter de los inputs.
+document.addEventListener("DOMContentLoaded", function() {
+    const q = document.getElementById("q");
+    const m = document.getElementById("manual");
 
-    if (q) {
-        q.disabled = false;
-        q.readOnly = false;
-        q.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();window.iniciarBusqueda();} });
-        q.addEventListener("keyup",   e => { if(e.key==="Enter"){e.preventDefault();window.iniciarBusqueda();} });
-    }
-    if (m) {
-        m.disabled = false;
-        m.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();window.iniciarBusqueda();} });
-    }
-    // Botón buscar — doble registro para mayor compatibilidad móvil
-    if (btn) {
-        btn.onclick = null;
-        btn.addEventListener("click",      () => window.iniciarBusqueda());
-        btn.addEventListener("touchstart", (e) => { e.preventDefault(); window.iniciarBusqueda(); }, {passive:false});
-    }
+    q?.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); window.iniciarBusqueda(); }
+    });
+    m?.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); window.iniciarBusqueda(); }
+    });
+    document.getElementById("adminPass")?.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); window.adminLogin(); }
+    });
+    document.getElementById("noteTitle")?.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); window.saveNote(); }
+    });
 
-    const adminPass = document.getElementById("adminPass");
-    if (adminPass) {
-        adminPass.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();window.adminLogin();} });
-    }
+    _mostrar("welcome");
+    if (navigator.onLine) _sincronizarPendientes();
+});
 
-    showState("welcome");
-    if (navigator.onLine) sincronizarPendientes();
-
-    // Focus en input de búsqueda (solo desktop)
-    if (!/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-        setTimeout(() => q?.focus(), 300);
-    }
-}
-
-// Ejecutar cuando el DOM esté listo
-if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initEventos);
-} else {
-    initEventos();
-}
-
-/* ══════════════════════════════════════════
-   APUNTES — localStorage
-══════════════════════════════════════════ */
-function localNotesLoad() {
-    try { return JSON.parse(localStorage.getItem("interlocks_notes") || "[]"); }
+// ─── NOTAS — localStorage ────────────────────────────────
+function _notasLocales() {
+    try { return JSON.parse(localStorage.getItem("interlocks_notes")||"[]"); }
     catch { return []; }
 }
-function localNotesSave(notes) {
-    localStorage.setItem("interlocks_notes", JSON.stringify(notes));
+function _notasGuardar(notas) {
+    localStorage.setItem("interlocks_notes", JSON.stringify(notas));
 }
-function localNoteSync(note) {
-    const all = localNotesLoad().filter(n => n.id !== note.id);
-    all.push(note);
-    localNotesSave(all);
+function _notaSync(nota) {
+    const todas = _notasLocales().filter(n=>n.id!==nota.id);
+    todas.push(nota);
+    _notasGuardar(todas);
 }
-function localNoteDelete(id) {
-    localNotesSave(localNotesLoad().filter(n => n.id !== id));
+function _notaBorrar(id) {
+    _notasGuardar(_notasLocales().filter(n=>n.id!==id));
 }
 
-function pendingLoad()     { try{return JSON.parse(localStorage.getItem("interlocks_pending")||"[]");}catch{return[];} }
-function pendingSave(p)    { localStorage.setItem("interlocks_pending", JSON.stringify(p)); }
-function pendingAdd(note)  { const p=pendingLoad(); p.push(note); pendingSave(p); }
-function pendingRemove(id) { pendingSave(pendingLoad().filter(n=>n.id!==id)); }
+// Pendientes (creados sin internet)
+function _pendientes()      { try{return JSON.parse(localStorage.getItem("interlocks_pend")||"[]");}catch{return[];} }
+function _pendGuardar(p)    { localStorage.setItem("interlocks_pend", JSON.stringify(p)); }
+function _pendAgregar(nota) { const p=_pendientes(); p.push(nota); _pendGuardar(p); }
+function _pendQuitar(id)    { _pendGuardar(_pendientes().filter(n=>n.id!==id)); }
 
-async function sincronizarPendientes() {
-    const pending = pendingLoad();
-    if (!pending.length) return;
-    let synced = 0;
-    for (const note of pending) {
+async function _sincronizarPendientes() {
+    const pend = _pendientes();
+    if (!pend.length) return;
+    let ok = 0;
+    for (const nota of pend) {
         try {
             await fetch("/notes", {
                 method:"POST",
                 headers:{"Content-Type":"application/json"},
-                body: JSON.stringify(note)
+                body: JSON.stringify(nota)
             });
-            pendingRemove(note.id);
-            synced++;
+            _pendQuitar(nota.id);
+            ok++;
         } catch { break; }
     }
-    if (synced > 0) toast(`☁️ ${synced} apunte(s) sincronizado(s)`);
+    if (ok > 0) _toast(`☁️ ${ok} apunte(s) sincronizado(s)`);
 }
 
-/* ══════════════════════════════════════════
-   APUNTES — cargar y renderizar
-══════════════════════════════════════════ */
+// ─── NOTAS — cargar y mostrar ────────────────────────────
 window.loadNotes = async function() {
-    const list  = document.getElementById("notesList");
+    const lista = document.getElementById("notesList");
     const empty = document.getElementById("notesEmpty");
-    if (!list) return;
-    list.innerHTML = `<div class="spinner-wrap"><div class="spinner"></div></div>`;
+    if (!lista) return;
+    lista.innerHTML = `<div class="spinner-wrap"><div class="spinner"></div></div>`;
     if (empty) empty.style.display = "none";
 
-    let notes = [];
+    let notas = [];
     if (navigator.onLine) {
-        try {
-            const r = await fetch("/notes");
-            notes   = await r.json();
-            localNotesSave(notes);
-        } catch { notes = localNotesLoad(); }
+        try { const r = await fetch("/notes"); notas = await r.json(); _notasGuardar(notas); }
+        catch { notas = _notasLocales(); }
     } else {
-        notes = localNotesLoad();
+        notas = _notasLocales();
     }
-    renderNotes(notes);
+    _renderNotas(notas);
 };
 
-function renderNotes(notes) {
-    const list  = document.getElementById("notesList");
+function _renderNotas(notas) {
+    const lista = document.getElementById("notesList");
     const empty = document.getElementById("notesEmpty");
-    if (!list) return;
-    list.innerHTML = "";
-    if (!notes?.length) { if(empty) empty.style.display="flex"; return; }
+    if (!lista) return;
+    lista.innerHTML = "";
+    if (!notas?.length) { if(empty) empty.style.display="flex"; return; }
     if (empty) empty.style.display = "none";
 
-    notes.forEach(note => {
+    notas.forEach(nota => {
         const div = document.createElement("div");
         div.className = "note-item";
-        div.id = `note-${note.id}`;
-        const tagsHtml  = (note.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("");
-        const isPending = pendingLoad().some(p=>p.id===note.id);
+        div.id = `note-${nota.id}`;
+        const tags = (nota.tags||[]).map(t=>`<span class="tag">${_esc(t)}</span>`).join("");
+        const pend = _pendientes().some(p=>p.id===nota.id);
         div.innerHTML = `
             <div class="note-item-header">
                 <div class="note-item-title">
-                    ${esc(note.title)}
-                    ${isPending?'<span style="color:var(--warn);font-size:.7rem"> ⏳</span>':""}
+                    ${_esc(nota.title)}
+                    ${pend?'<span style="color:var(--warn);font-size:.7rem"> ⏳</span>':""}
                 </div>
                 <div class="note-actions">
-                    <button class="btn btn-ghost btn-sm" onclick="editNote('${note.id}')">✏️</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteNote('${note.id}')">🗑</button>
+                    <button class="btn btn-ghost btn-sm" onclick="editNote('${nota.id}')">✏️</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteNote('${nota.id}')">🗑</button>
                 </div>
             </div>
-            <div class="note-item-text">${esc(note.text)}</div>
-            ${tagsHtml?`<div class="card-tags">${tagsHtml}</div>`:""}
+            <div class="note-item-text">${_esc(nota.text)}</div>
+            ${tags?`<div class="card-tags">${tags}</div>`:""}
         `;
-        list.appendChild(div);
+        lista.appendChild(div);
     });
 }
 
-/* ══════════════════════════════════════════
-   APUNTES — formulario
-══════════════════════════════════════════ */
+// ─── NOTAS — formulario ──────────────────────────────────
 window.toggleNoteForm = function() {
     const form = document.getElementById("noteForm");
     if (!form) return;
-    if (form.style.display !== "none") { window.cancelNoteForm(); return; }
-    form.style.display = "block";
-    document.getElementById("noteFormTitle").textContent = "✏️ NUEVO APUNTE";
-    ["editingId","noteTitle","noteText","noteTags"].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = "";
-    });
-    setTimeout(() => document.getElementById("noteTitle")?.focus(), 100);
+    if (form.style.display === "none" || form.style.display === "") {
+        form.style.display = "block";
+        document.getElementById("noteFormTitle").textContent = "✏️ NUEVO APUNTE";
+        ["editingId","noteTitle","noteText","noteTags"]
+            .forEach(id => { const el=document.getElementById(id); if(el) el.value=""; });
+        setTimeout(()=>document.getElementById("noteTitle")?.focus(), 100);
+    } else {
+        window.cancelNoteForm();
+    }
 };
 
 window.cancelNoteForm = function() {
@@ -458,16 +364,16 @@ window.cancelNoteForm = function() {
 };
 
 window.editNote = function(id) {
-    const note = localNotesLoad().find(n=>n.id===id);
-    if (!note) return;
+    const nota = _notasLocales().find(n=>n.id===id);
+    if (!nota) return;
     const form = document.getElementById("noteForm");
     if (form) form.style.display = "block";
     document.getElementById("noteFormTitle").textContent = "✏️ EDITAR APUNTE";
     document.getElementById("editingId").value = id;
-    document.getElementById("noteTitle").value = note.title;
-    document.getElementById("noteText").value  = note.text;
-    document.getElementById("noteTags").value  = (note.tags||[]).join(", ");
-    setTimeout(() => document.getElementById("noteTitle")?.focus(), 100);
+    document.getElementById("noteTitle").value = nota.title;
+    document.getElementById("noteText").value  = nota.text;
+    document.getElementById("noteTags").value  = (nota.tags||[]).join(", ");
+    setTimeout(()=>document.getElementById("noteTitle")?.focus(), 100);
     form?.scrollIntoView({behavior:"smooth"});
 };
 
@@ -477,9 +383,10 @@ window.saveNote = async function() {
     const text  = document.getElementById("noteText").value.trim();
     const tags  = document.getElementById("noteTags").value
                     .split(",").map(t=>t.trim()).filter(Boolean);
-    if (!title) { toast("El título es obligatorio","err"); return; }
 
-    const note = { id: id || crypto.randomUUID(), title, text, tags };
+    if (!title) { _toast("El título es obligatorio","err"); return; }
+
+    const nota = { id: id || crypto.randomUUID(), title, text, tags };
 
     if (navigator.onLine) {
         try {
@@ -487,20 +394,22 @@ window.saveNote = async function() {
             const url    = id ? `/notes/${id}` : "/notes";
             await fetch(url, {
                 method,
-                headers:{"Content-Type":"application/json"},
-                body: JSON.stringify(note)
+                headers: {"Content-Type":"application/json"},
+                body: JSON.stringify(nota)
             });
-            pendingRemove(note.id);
-        } catch { if (!id) pendingAdd(note); }
+            _pendQuitar(nota.id);
+        } catch {
+            if (!id) _pendAgregar(nota);
+        }
     } else {
-        if (!id) pendingAdd(note);
-        toast("⚠️ Sin internet — se sincronizará al conectarte");
+        if (!id) _pendAgregar(nota);
+        _toast("⚠️ Sin internet — se sincronizará al conectarte");
     }
 
-    localNoteSync(note);
+    _notaSync(nota);
     window.cancelNoteForm();
     window.loadNotes();
-    toast(id ? "✅ Apunte actualizado" : "✅ Apunte guardado");
+    _toast(id ? "✅ Apunte actualizado" : "✅ Apunte guardado");
 };
 
 window.deleteNote = async function(id) {
@@ -508,26 +417,24 @@ window.deleteNote = async function(id) {
     if (navigator.onLine) {
         try { await fetch(`/notes/${id}`, {method:"DELETE"}); } catch {}
     }
-    localNoteDelete(id);
-    pendingRemove(id);
+    _notaBorrar(id);
+    _pendQuitar(id);
     document.getElementById(`note-${id}`)?.remove();
-    const list = document.getElementById("notesList");
-    if (list && !list.children.length) {
+    const lista = document.getElementById("notesList");
+    if (lista && !lista.children.length) {
         const empty = document.getElementById("notesEmpty");
         if (empty) empty.style.display = "flex";
     }
-    toast("🗑 Apunte eliminado");
+    _toast("🗑 Apunte eliminado");
 };
 
-/* ══════════════════════════════════════════
-   ADMIN
-══════════════════════════════════════════ */
-let adminPassword = "";
+// ─── ADMIN ───────────────────────────────────────────────
+let _adminPw = "";
 
 window.adminLogin = async function() {
     const pwEl = document.getElementById("adminPass");
-    const pw   = pwEl ? pwEl.value.trim() : "";
-    if (!pw) { toast("Ingresa la contraseña","err"); return; }
+    const pw   = pwEl?.value.trim() || "";
+    if (!pw) { _toast("Ingresa la contraseña","err"); return; }
     try {
         const r = await fetch("/admin/check", {
             method:"POST",
@@ -535,37 +442,39 @@ window.adminLogin = async function() {
             body: JSON.stringify({password: pw})
         });
         if (r.ok) {
-            adminPassword = pw;
+            _adminPw = pw;
             document.getElementById("adminLock").style.display    = "none";
             document.getElementById("adminContent").style.display = "block";
-            loadAdminConfig();
-            loadManualList();
+            _loadAdminConfig();
+            window.loadManualList();
         } else {
-            toast("❌ Contraseña incorrecta","err");
+            _toast("❌ Contraseña incorrecta","err");
         }
     } catch {
-        toast("❌ Sin conexión al servidor","err");
+        _toast("❌ Sin conexión al servidor","err");
     }
 };
 
 window.adminLogout = function() {
-    adminPassword = "";
+    _adminPw = "";
     document.getElementById("adminLock").style.display    = "flex";
     document.getElementById("adminContent").style.display = "none";
     const pwEl = document.getElementById("adminPass");
     if (pwEl) pwEl.value = "";
 };
 
-async function loadAdminConfig() {
+async function _loadAdminConfig() {
+    const info = document.getElementById("configInfo");
+    if (!info) return;
     try {
-        const r    = await fetch(`/admin/config?password=${encodeURIComponent(adminPassword)}`);
+        const r    = await fetch(`/admin/config?password=${encodeURIComponent(_adminPw)}`);
         const data = await r.json();
         if (!r.ok) return;
         if (data.r2_url && data.r2_url !== "No configurada") {
-            r2BaseUrl = data.r2_url;
-            localStorage.setItem("r2BaseUrl", r2BaseUrl);
+            _r2Url = data.r2_url;
+            localStorage.setItem("r2Url", _r2Url);
         }
-        document.getElementById("configInfo").innerHTML = `
+        info.innerHTML = `
             <div class="config-row"><span>📚 Total páginas</span><span>${data.total_pages}</span></div>
             <div class="config-row"><span>📘 Manuales</span><span>${data.total_manuals}</span></div>
             <div class="config-row"><span>📝 Apuntes</span><span>${data.notes_count}</span></div>
@@ -576,9 +485,8 @@ async function loadAdminConfig() {
                 </span>
             </div>
         `;
-    } catch(e) {
-        document.getElementById("configInfo").innerHTML =
-            `<p style="color:var(--danger);font-size:.8rem">Error al cargar config</p>`;
+    } catch {
+        if (info) info.innerHTML = `<p style="color:var(--danger);font-size:.8rem">Error al cargar</p>`;
     }
 }
 
@@ -587,12 +495,12 @@ window.loadManualList = async function() {
     if (!div) return;
     div.innerHTML = `<div class="spinner-wrap" style="padding:12px 0"><div class="spinner"></div></div>`;
     try {
-        const r    = await fetch(`/admin/manuals?password=${encodeURIComponent(adminPassword)}`);
+        const r    = await fetch(`/admin/manuals?password=${encodeURIComponent(_adminPw)}`);
         const data = await r.json();
         if (!r.ok) { div.innerHTML=`<p style="color:var(--danger)">${data.error}</p>`; return; }
         div.innerHTML = data.map(m=>`
             <div class="manual-row">
-                <span style="color:var(--text)">${esc(m.manual)}</span>
+                <span style="color:var(--text)">${_esc(m.manual)}</span>
                 <span>${m.pages} págs.</span>
             </div>`).join("");
     } catch(e) {
