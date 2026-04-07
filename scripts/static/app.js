@@ -1,4 +1,4 @@
-console.log("✅ app.js v9");
+console.log("✅ app.js v9.1 — PDF Mobile Fix");
 
 // ─── RED ──────────────────────────────────────────────────
 function actualizarRed() {
@@ -35,7 +35,7 @@ function esc(s) {
 }
 function hi(txt, kw) {
     if (!kw) return esc(txt);
-    const re = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"gi");
+    const re = new RegExp(kw.replace(/[.*+?^${}()|[\\]\\\\]/g,"\\\\$&"),"gi");
     return esc(txt).replace(re, m => "<mark>"+m+"</mark>");
 }
 function toast(msg, tipo) {
@@ -47,10 +47,36 @@ function toast(msg, tipo) {
     setTimeout(() => t.remove(), 3500);
 }
 
-// ─── PDF ─────────────────────────────────────────────────
+// ─── PDF OPTIMIZADO (NUEVA VERSIÓN v9.1) ──────────────────
 function verPDF(manual, page) {
     if (!_r2url) { toast("⚠️ PDFs no configurados","err"); return; }
-    window.open(_r2url + "/" + encodeURIComponent(manual + ".pdf") + "#page=" + page, "_blank");
+    
+    const url = _r2url + "/" + encodeURIComponent(manual + ".pdf") + "#page=" + page;
+    
+    // ANDROID: Download directo (evita crash del viewer Chrome)
+    if (/Android/.test(navigator.userAgent)) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = manual + ".pdf";
+        a.target = "_blank";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        toast("📥 PDF descargado — ábrelo en Descargas", "tok");
+        return;
+    }
+    
+    // iOS/DESKTOP: Link optimizado + prefetch
+    const link = document.createElement('a');
+    link.href = url + (/iPad|iPhone|iPod/.test(navigator.userAgent) ? "&zoom=100" : "");
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Prefetch para acelerar
+    fetch(url, {method: 'HEAD'}).catch(() => {});
 }
 
 // ─── UI STATE ────────────────────────────────────────────
@@ -81,7 +107,7 @@ function renderResultados(results, kw, modo) {
         const tags   = nota && r.tags && r.tags.length
             ? '<div class="card-tags">' + r.tags.map(t => '<span class="tag">'+esc(t)+'</span>').join("") + "</div>" : "";
         const pdfBtn = (!nota && _r2url)
-            ? '<button class="btn-pdf" onclick="verPDF(\''+esc(r.manual)+'\','+r.page+')">📖 Pág. '+r.page+'</button>' : "";
+            ? '<button class="btn-pdf" onclick="verPDF(\\''+esc(r.manual)+'\\','+r.page+')">📖 Pág. '+r.page+'</button>' : "";
         card.innerHTML =
             '<div class="card-header"><span class="card-manual '+badge+'">'+mLabel+'</span><span class="card-page">📄 '+pLabel+'</span></div>'+
             '<div class="card-ctx">'+hi(r.context, kw)+'</div>'+
@@ -101,7 +127,7 @@ async function buscarOffline(kw, mf) {
         const tl = p.text.toLowerCase();
         if (!tl.includes(kwl)) continue;
         const pos = tl.indexOf(kwl);
-        const ctx = p.text.substring(Math.max(0,pos-80), Math.min(p.text.length,pos+120)).replace(/\n+/g," ").trim();
+        const ctx = p.text.substring(Math.max(0,pos-80), Math.min(p.text.length,pos+120)).replace(/\\n+/g," ").trim();
         res.push({ type:"manual", manual:p.manual, page:p.page, context:ctx, action:"Revisar sección completa del manual" });
     }
     if (!mfl || mfl === "apuntes") {
@@ -125,7 +151,6 @@ async function buscarOnline(kw, mf) {
 }
 
 // ─── BUSCAR ──────────────────────────────────────────────
-// Esta función es llamada por onclick en el HTML Y por Enter en los inputs
 async function buscar() {
     const kw  = (document.getElementById("q").value || "").trim();
     const mf  = (document.getElementById("manual").value || "").trim();
@@ -156,8 +181,7 @@ async function buscar() {
     }
 }
 
-// ─── INIT: solo registra Enter en inputs ─────────────────
-// Los botones ya tienen onclick="funcion()" en el HTML
+// ─── INIT ─────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", function() {
     const q = document.getElementById("q");
     const m = document.getElementById("manual");
@@ -198,7 +222,6 @@ async function syncPendientes() {
     if (ok > 0) toast("☁️ " + ok + " apunte(s) sincronizado(s)");
 }
 
-// ─── NOTAS cargar ────────────────────────────────────────
 async function cargarNotas() {
     const lista = document.getElementById("listaNotas");
     const empty = document.getElementById("sinNotas");
@@ -221,8 +244,8 @@ async function cargarNotas() {
             '<div class="note-item-header">'+
               '<div class="note-item-title">'+esc(n.title)+(pend?' <span style="color:var(--warn);font-size:.7rem">⏳</span>':'')+'</div>'+
               '<div class="note-actions">'+
-                '<button class="btn btn-ghost btn-sm" onclick="editarNota(\''+n.id+'\')">✏️</button>'+
-                '<button class="btn btn-danger btn-sm" onclick="eliminarNota(\''+n.id+'\')">🗑</button>'+
+                '<button class="btn btn-ghost btn-sm" onclick="editarNota(\\''+n.id+'\\')">✏️</button>'+
+                '<button class="btn btn-danger btn-sm" onclick="eliminarNota(\\''+n.id+'\\')">🗑</button>'+
               '</div>'+
             '</div>'+
             '<div class="note-item-text">'+esc(n.text)+'</div>'+
@@ -231,7 +254,6 @@ async function cargarNotas() {
     });
 }
 
-// ─── NOTAS formulario ────────────────────────────────────
 function abrirFormNota() {
     const f = document.getElementById("formNota");
     if (!f) return;
