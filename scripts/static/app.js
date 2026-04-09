@@ -47,28 +47,110 @@ function toast(msg, tipo) {
     setTimeout(() => t.remove(), 3500);
 }
 
-// ─── PDF ─────────────────────────────────────────────────
+// ─── PDF VIEWER (PDF.js) ─────────────────────────────────
+// Carga PDF.js desde CDN de Mozilla al primer uso
+let _pdfJsLoaded = false;
+
+function cargarPdfJs(cb) {
+    if (_pdfJsLoaded) { cb(); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload = function() {
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        _pdfJsLoaded = true;
+        cb();
+    };
+    s.onerror = function() {
+        toast("❌ No se pudo cargar el visor PDF","err");
+    };
+    document.head.appendChild(s);
+}
+
 function verPDF(manual, page) {
     if (!_r2url) { toast("⚠️ PDFs no configurados","err"); return; }
-    const pdfUrl    = _r2url + "/" + encodeURIComponent(manual + ".pdf");
-    const esAndroid = /Android/i.test(navigator.userAgent);
+    const pdfUrl = _r2url + "/" + encodeURIComponent(manual + ".pdf");
+    toast("📄 Cargando PDF...", "ok");
+    cargarPdfJs(function() {
+        abrirVisorPDF(pdfUrl, page, manual);
+    });
+}
 
-    if (esAndroid) {
-        // Android: descarga directa — simple y funciona con cualquier tamaño
-        // El usuario abre el PDF con su app instalada (Adobe, Drive, etc.)
-        toast("⬇️ Descargando PDF — pág. " + page, "ok");
-        const a = document.createElement("a");
-        a.href     = pdfUrl;
-        a.download = manual + ".pdf";
-        a.target   = "_blank";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-    } else {
-        // iOS y Desktop: visor nativo con #page
-        toast("📄 Abriendo pág. " + page + " — puede tardar unos segundos", "ok");
-        window.open(pdfUrl + "#page=" + page, "_blank");
+function abrirVisorPDF(pdfUrl, pageNum, manual) {
+    // Crear o reutilizar modal
+    let modal = document.getElementById("pdfModal");
+    if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "pdfModal";
+        modal.style.cssText =
+            "position:fixed;inset:0;z-index:9999;background:#1a1a2e;display:flex;flex-direction:column;";
+        document.body.appendChild(modal);
     }
+    modal.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#111827;border-bottom:1px solid #1e293b;flex-shrink:0;gap:8px;flex-wrap:wrap;">' +
+            '<div style="font-size:.75rem;color:#00d4ff;font-family:monospace;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55vw">📘 ' + esc(manual) + '</div>' +
+            '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
+                '<button onclick="pdfPagAnterior()" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.8rem">◀</button>' +
+                '<span id="pdfPagInfo" style="font-size:.75rem;color:#94a3b8;font-family:monospace;min-width:70px;text-align:center">Pág. ' + pageNum + '</span>' +
+                '<button onclick="pdfPagSiguiente()" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.8rem">▶</button>' +
+                '<button onclick="cerrarVisorPDF()" style="background:#ef4444;border:none;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.8rem">✕</button>' +
+            '</div>' +
+        '</div>' +
+        '<div id="pdfScroll" style="flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;align-items:center;padding:10px 0;background:#1a1a2e;">' +
+            '<canvas id="pdfCanvas" style="max-width:100%;box-shadow:0 2px 12px rgba(0,0,0,.5);"></canvas>' +
+        '</div>';
+    modal.style.display = "flex";
+
+    // Estado del visor
+    window._pdfDoc      = null;
+    window._pdfPage     = pageNum;
+    window._pdfRendering = false;
+
+    pdfjsLib.getDocument({ url: pdfUrl, cMapUrl: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/", cMapPacked: true })
+        .promise.then(function(doc) {
+            window._pdfDoc = doc;
+            document.getElementById("pdfPagInfo").textContent = "Pág. " + pageNum + " / " + doc.numPages;
+            renderPdfPagina(pageNum);
+        }).catch(function(err) {
+            document.getElementById("pdfScroll").innerHTML =
+                '<p style="color:#ef4444;padding:20px;text-align:center">❌ No se pudo cargar el PDF.<br><small style="color:#64748b">' + err.message + '</small></p>';
+        });
+}
+
+function renderPdfPagina(num) {
+    if (!window._pdfDoc || window._pdfRendering) return;
+    window._pdfRendering = true;
+    window._pdfDoc.getPage(num).then(function(page) {
+        const canvas  = document.getElementById("pdfCanvas");
+        const ctx     = canvas.getContext("2d");
+        const vw      = Math.min(window.innerWidth - 20, 900);
+        const vp0     = page.getViewport({ scale: 1 });
+        const scale   = vw / vp0.width;
+        const vp      = page.getViewport({ scale });
+        canvas.width  = vp.width;
+        canvas.height = vp.height;
+        page.render({ canvasContext: ctx, viewport: vp }).promise.then(function() {
+            window._pdfRendering = false;
+            window._pdfPage = num;
+            const info = document.getElementById("pdfPagInfo");
+            if (info) info.textContent = "Pág. " + num + " / " + window._pdfDoc.numPages;
+            document.getElementById("pdfScroll").scrollTop = 0;
+        });
+    });
+}
+
+function pdfPagAnterior() {
+    if (!window._pdfDoc || window._pdfPage <= 1) return;
+    renderPdfPagina(window._pdfPage - 1);
+}
+function pdfPagSiguiente() {
+    if (!window._pdfDoc || window._pdfPage >= window._pdfDoc.numPages) return;
+    renderPdfPagina(window._pdfPage + 1);
+}
+function cerrarVisorPDF() {
+    const m = document.getElementById("pdfModal");
+    if (m) m.style.display = "none";
+    window._pdfDoc = null;
 }
 
 // ─── UI STATE ────────────────────────────────────────────
