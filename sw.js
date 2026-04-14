@@ -1,7 +1,7 @@
-// SOLVI SW v17
+// SOLVI SW v18
 // Offline completo: cachea HTML shell, app.js, JSON manuales y PDF.js
 
-const CACHE = "solvi-v17";
+const CACHE = "solvi-v18";
 
 const PRECACHE = [
     "/",
