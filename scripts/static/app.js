@@ -70,19 +70,21 @@ function cargarPdfJs(cb) {
 function verPDF(manual, page) {
     if (!_r2url) { toast("⚠️ PDFs no configurados","err"); return; }
     const pdfUrl = _r2url + "/" + encodeURIComponent(manual + ".pdf");
+    
+    // CORRECCIÓN: Obligamos a que la página sea un número matemático exacto
+    const pageInt = parseInt(page, 10) || 1;
+
     if (!navigator.onLine) {
-        // Sin internet: PDF.js debe estar en caché del SW
         toast("📴 Modo offline — cargando desde caché", "ok");
     } else {
         toast("📄 Cargando PDF...", "ok");
     }
     cargarPdfJs(function() {
-        abrirVisorPDF(pdfUrl, page, manual);
+        abrirVisorPDF(pdfUrl, pageInt, manual);
     });
 }
 
 function abrirVisorPDF(pdfUrl, pageNum, manual) {
-    // Crear o reutilizar modal
     let modal = document.getElementById("pdfModal");
     if (!modal) {
         modal = document.createElement("div");
@@ -91,6 +93,7 @@ function abrirVisorPDF(pdfUrl, pageNum, manual) {
             "position:fixed;inset:0;z-index:9999;background:#1a1a2e;display:flex;flex-direction:column;";
         document.body.appendChild(modal);
     }
+    
     modal.innerHTML =
         '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#111827;border-bottom:1px solid #1e293b;flex-shrink:0;gap:8px;flex-wrap:wrap;">' +
             '<div style="font-size:.75rem;color:#00d4ff;font-family:monospace;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:45vw">📘 ' + esc(manual) + '</div>' +
@@ -98,20 +101,21 @@ function abrirVisorPDF(pdfUrl, pageNum, manual) {
                 '<button onclick="pdfPagAnterior()" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.8rem">◀</button>' +
                 '<span id="pdfPagInfo" style="font-size:.75rem;color:#94a3b8;font-family:monospace;min-width:70px;text-align:center">Pág. ' + pageNum + '</span>' +
                 '<button onclick="pdfPagSiguiente()" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.8rem">▶</button>' +
-                '<a href="' + pdfUrl + '" target="_blank" style="background:#0077ff;border:none;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.75rem;text-decoration:none;white-space:nowrap;">🌐 Web</a>' +
-                '<a href="' + pdfUrl + '" download style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.75rem;text-decoration:none;white-space:nowrap;">⬇ PDF</a>' +
+                '<a id="btnWebPdf" href="' + pdfUrl + '#page=' + pageNum + '" target="_blank" style="background:#0077ff;border:none;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.75rem;text-decoration:none;white-space:nowrap;">🌐 Web</a>' +
+                '<a href="' + pdfUrl + '" download style="background:#00d4ff;border:none;color:#000;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.75rem;font-weight:bold;text-decoration:none;white-space:nowrap;">💾 Offline</a>' +
                 '<button onclick="cerrarVisorPDF()" style="background:#ef4444;border:none;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.8rem">✕</button>' +
             '</div>' +
         '</div>' +
-        '<div id="pdfScroll" style="flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;align-items:center;padding:10px 0;background:#1a1a2e;">' +
-            '<canvas id="pdfCanvas" style="max-width:100%;box-shadow:0 2px 12px rgba(0,0,0,.5);"></canvas>' +
+        '<div id="pdfScroll" style="flex:1;overflow-y:auto;overflow-x:auto;display:flex;flex-direction:column;align-items:center;padding:10px 0;background:#1a1a2e;">' +
+            '<canvas id="pdfCanvas" style="max-width:100%;box-shadow:0 2px 12px rgba(0,0,0,.5); transform-origin: top center; transition: transform 0.1s ease-out; touch-action: pan-x pan-y;"></canvas>' +
         '</div>';
     modal.style.display = "flex";
 
-    // Estado del visor
     window._pdfDoc      = null;
     window._pdfPage     = pageNum;
     window._pdfRendering = false;
+
+    activarZoomCanvas();
 
     pdfjsLib.getDocument({ url: pdfUrl, cMapUrl: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/", cMapPacked: true })
         .promise.then(function(doc) {
@@ -120,27 +124,47 @@ function abrirVisorPDF(pdfUrl, pageNum, manual) {
             renderPdfPagina(pageNum);
         }).catch(function(err) {
             document.getElementById("pdfScroll").innerHTML =
-                '<p style="color:#ef4444;padding:20px;text-align:center">❌ No se pudo cargar el PDF.<br><small style="color:#64748b">' + err.message + '</small></p>';
+                '<p style="color:#ef4444;padding:20px;text-align:center">❌ Error al cargar el PDF.<br><small style="color:#64748b">' + err.message + '</small></p>';
         });
 }
 
 function renderPdfPagina(num) {
+    const numEntero = parseInt(num, 10);
     if (!window._pdfDoc || window._pdfRendering) return;
     window._pdfRendering = true;
-    window._pdfDoc.getPage(num).then(function(page) {
+    
+    window._pdfDoc.getPage(numEntero).then(function(page) {
         const canvas  = document.getElementById("pdfCanvas");
         const ctx     = canvas.getContext("2d");
+        
+        canvas.style.transform = "scale(1)";
+        canvas.dataset.currentZoom = 1;
+
         const vw      = Math.min(window.innerWidth - 20, 900);
         const vp0     = page.getViewport({ scale: 1 });
-        const scale   = vw / vp0.width;
-        const vp      = page.getViewport({ scale });
+        const baseScale = vw / vp0.width;
+        
+        // CUIDAMOS LA RAM: Ajuste dinámico según el equipo (máx x2)
+        const ratioInteligente = Math.min(window.devicePixelRatio || 1.5, 2);
+        const vp = page.getViewport({ scale: baseScale * ratioInteligente });
+        
         canvas.width  = vp.width;
         canvas.height = vp.height;
+        canvas.style.width = vw + "px"; // Mantiene el tamaño visual perfecto
+
         page.render({ canvasContext: ctx, viewport: vp }).promise.then(function() {
             window._pdfRendering = false;
-            window._pdfPage = num;
+            window._pdfPage = numEntero;
+            
             const info = document.getElementById("pdfPagInfo");
-            if (info) info.textContent = "Pág. " + num + " / " + window._pdfDoc.numPages;
+            if (info) info.textContent = "Pág. " + numEntero + " / " + window._pdfDoc.numPages;
+            
+            const btnWeb = document.getElementById("btnWebPdf");
+            if (btnWeb) {
+                const baseUrl = btnWeb.href.split('#')[0];
+                btnWeb.href = baseUrl + "#page=" + numEntero;
+            }
+
             document.getElementById("pdfScroll").scrollTop = 0;
         });
     });
@@ -158,6 +182,50 @@ function cerrarVisorPDF() {
     const m = document.getElementById("pdfModal");
     if (m) m.style.display = "none";
     window._pdfDoc = null;
+}
+
+// ─── LÓGICA DE ZOOM (Pinch-to-Zoom Seguro) ──────────────────────
+function activarZoomCanvas() {
+    const canvas = document.getElementById("pdfCanvas");
+    if (!canvas) return;
+
+    let currentZoom = 1;
+    let initialDistance = null;
+    canvas.dataset.currentZoom = 1;
+
+    canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            initialDistance = Math.hypot(
+                e.touches[0].pageX - e.touches[1].pageX,
+                e.touches[0].pageY - e.touches[1].pageY
+            );
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && initialDistance) {
+            e.preventDefault(); 
+            const currentDistance = Math.hypot(
+                e.touches[0].pageX - e.touches[1].pageX,
+                e.touches[0].pageY - e.touches[1].pageY
+            );
+            
+            const scaleChange = currentDistance / initialDistance;
+            let newZoom = currentZoom * scaleChange;
+            
+            // Límite seguro: 1x a 3x (Suficiente para leer sin que se borre)
+            newZoom = Math.max(1, Math.min(newZoom, 3));
+            canvas.style.transform = `scale(${newZoom})`;
+            canvas.dataset.currentZoom = newZoom;
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) {
+            initialDistance = null;
+            currentZoom = parseFloat(canvas.dataset.currentZoom || 1);
+        }
+    });
 }
 
 // ─── UI STATE ────────────────────────────────────────────
