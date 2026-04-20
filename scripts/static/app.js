@@ -131,12 +131,12 @@ function abrirVisorPDF(pdfUrl, pageNum, manual) {
             document.getElementById("pdfPagInfo").textContent = "Pág. " + pageNum + " / " + doc.numPages;
             renderPdfPagina(pageNum);
         }).catch(function(err) {
-            // NUEVO: Mensaje limpio sin el botón de visor nativo (Evita redundancia offline)
+            // Restaurado el estilo visual original (fuente, line-height y centrado perfecto)
             document.getElementById("pdfScroll").innerHTML =
                 '<div style="padding:40px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;">' +
                     '<div style="font-size:3.5rem;margin-bottom:10px;">📡</div>' +
                     '<p style="color:#ef4444;font-weight:bold;font-size:1.2rem;margin:0 0 10px 0;">Error de Red</p>' +
-                    '<p style="color:#94a3b8;font-size:1rem;max-width:320px;margin:0;">La conexión de red es inestable.</p>' +
+                    '<p style="color:#94a3b8;font-size:0.95rem;max-width:320px;margin:0 auto;line-height:1.5;">La conexión de red es inestable.</p>' +
                 '</div>';
         });
 }
