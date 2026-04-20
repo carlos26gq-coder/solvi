@@ -24,3 +24,10 @@ chrome://serviceworker-internals/
 ---
 pdf almacenados link en cloudflare
 https://pub-ec13dffb5c7246359cd9109c52d257f5.r2.dev
+---
+dir /S /B | findstr /V /I "venv __pycache__ .git node_modules"
+para ver el árbol de las carpetas
+
+----
+git remote set-url origin http...
+subir el nuevo url de GitHub para cambiar el enlace a github
