@@ -1,4 +1,4 @@
-console.log("✅ app.js v9");
+console.log("✅ app.js v10"); // Actualizado para control de versiones
 
 // ─── RED ──────────────────────────────────────────────────
 function actualizarRed() {
@@ -48,7 +48,6 @@ function toast(msg, tipo) {
 }
 
 // ─── PDF VIEWER (PDF.js) ─────────────────────────────────
-// Carga PDF.js desde CDN de Mozilla al primer uso
 let _pdfJsLoaded = false;
 
 function cargarPdfJs(cb) {
@@ -95,8 +94,6 @@ function abrirVisorPDF(pdfUrl, pageNum, manual) {
         document.body.appendChild(modal);
     }
     
-    // CORRECCIÓN ZOOM: Se cambió align-items a flex-start para no cortar el lado izquierdo.
-    // Se añadió margin: 0 auto al canvas para mantenerlo centrado de forma segura.
     modal.innerHTML =
         '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#111827;border-bottom:1px solid #1e293b;flex-shrink:0;gap:8px;flex-wrap:wrap;">' +
             '<div style="font-size:.75rem;color:#00d4ff;font-family:monospace;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:45vw">📘 ' + esc(manual) + '</div>' +
@@ -120,12 +117,11 @@ function abrirVisorPDF(pdfUrl, pageNum, manual) {
 
     activarZoomCanvas();
 
-    // MEJORA INTELIGENTE: Detectamos Android para esquivar el proxy agresivo de las operadoras móviles
     const isAndroid = /Android/i.test(navigator.userAgent);
 
     pdfjsLib.getDocument({ 
         url: pdfUrl, 
-        disableRange: isAndroid, // Salvavidas: descarga en bloque solo en Android
+        disableRange: isAndroid, 
         disableStream: isAndroid,
         cMapUrl: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/", 
         cMapPacked: true 
@@ -135,16 +131,12 @@ function abrirVisorPDF(pdfUrl, pageNum, manual) {
             document.getElementById("pdfPagInfo").textContent = "Pág. " + pageNum + " / " + doc.numPages;
             renderPdfPagina(pageNum);
         }).catch(function(err) {
-            let errorMsg = err.message;
-            if (errorMsg.includes("Failed to fetch") || errorMsg.includes("Network")) {
-                errorMsg = "La conexión móvil es inestable o la operadora bloqueó la descarga.";
-            }
+            // NUEVO: Mensaje limpio sin el botón de visor nativo (Evita redundancia offline)
             document.getElementById("pdfScroll").innerHTML =
                 '<div style="padding:40px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;">' +
                     '<div style="font-size:3.5rem;margin-bottom:10px;">📡</div>' +
                     '<p style="color:#ef4444;font-weight:bold;font-size:1.2rem;margin:0 0 10px 0;">Error de Red</p>' +
-                    '<p style="color:#94a3b8;font-size:0.95rem;max-width:320px;margin:0 0 20px 0;">' + errorMsg + '</p>' +
-                    '<a href="' + pdfUrl + '" target="_blank" style="background:#00d4ff;color:#0b0f1a;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;box-shadow:0 4px 6px rgba(0,0,0,0.3);">👁️ Intentar Visor Nativo del Celular</a>' +
+                    '<p style="color:#94a3b8;font-size:1rem;max-width:320px;margin:0;">La conexión de red es inestable.</p>' +
                 '</div>';
         });
 }
@@ -191,7 +183,6 @@ function renderPdfPagina(num) {
     });
 }
 
-// CORRECCIÓN: Funciones restauradas para controlar el visor
 function pdfPagAnterior() {
     if (!window._pdfDoc || window._pdfPage <= 1) return;
     renderPdfPagina(window._pdfPage - 1);
@@ -215,7 +206,7 @@ function activarZoomCanvas() {
     let currentZoom = 1;
     let initialDistance = null;
     let isPinching = false;
-    let animationFrameId = null; // Válvula de seguridad para el procesador
+    let animationFrameId = null;
 
     canvas.dataset.currentZoom = 1;
 
@@ -231,16 +222,12 @@ function activarZoomCanvas() {
 
     canvas.addEventListener('touchmove', (e) => {
         if (e.touches.length === 2 && isPinching && initialDistance) {
-            e.preventDefault(); // Evita scroll brusco nativo
-            
-            // OPTIMIZACIÓN: Si el celular aún está dibujando el cuadro anterior, ignoramos este cálculo
+            e.preventDefault(); 
             if (animationFrameId) return; 
 
-            // Extraemos la posición actual de los dedos
             const touch1 = e.touches[0];
             const touch2 = e.touches[1];
 
-            // Sincronizamos con el motor gráfico del navegador (60 fps estables)
             animationFrameId = requestAnimationFrame(() => {
                 const currentDistance = Math.hypot(
                     touch1.pageX - touch2.pageX,
@@ -253,7 +240,6 @@ function activarZoomCanvas() {
                 const scaleChange = currentDistance / initialDistance;
                 let newZoom = currentZoom * scaleChange;
                 
-                // Límite de seguridad
                 newZoom = Math.max(1, Math.min(newZoom, 3));
                 const actualScaleRatio = newZoom / currentZoom;
                 
@@ -265,7 +251,6 @@ function activarZoomCanvas() {
                     const baseWidth = parseFloat(canvas.dataset.baseWidth || window.innerWidth);
                     canvas.style.width = (baseWidth * newZoom) + "px";
                     
-                    // Ajuste milimétrico del scroll hacia el punto central
                     container.scrollLeft += pointX * (actualScaleRatio - 1);
                     container.scrollTop += pointY * (actualScaleRatio - 1);
                     
@@ -273,8 +258,6 @@ function activarZoomCanvas() {
                     canvas.dataset.currentZoom = newZoom;
                     initialDistance = currentDistance;
                 }
-                
-                // Liberamos la válvula para el siguiente cálculo
                 animationFrameId = null; 
             });
         }
@@ -284,7 +267,6 @@ function activarZoomCanvas() {
         if (e.touches.length < 2) {
             isPinching = false;
             initialDistance = null;
-            // Limpieza de memoria si el usuario suelta la pantalla de golpe
             if (animationFrameId) {
                 cancelAnimationFrame(animationFrameId);
                 animationFrameId = null;
@@ -365,7 +347,6 @@ async function buscarOnline(kw, mf) {
 }
 
 // ─── BUSCAR ──────────────────────────────────────────────
-// Esta función es llamada por onclick en el HTML Y por Enter en los inputs
 async function buscar() {
     const kw  = (document.getElementById("q").value || "").trim();
     const mf  = (document.getElementById("manual").value || "").trim();
@@ -396,8 +377,26 @@ async function buscar() {
     }
 }
 
-// ─── INIT: solo registra Enter en inputs ─────────────────
-// Los botones ya tienen onclick="funcion()" en el HTML
+// ─── MENSAJE DE BIENVENIDA ────────────────────────────────
+function mostrarBienvenida() {
+    if (sessionStorage.getItem("bienvenidaMostrada")) return;
+    sessionStorage.setItem("bienvenidaMostrada", "true");
+
+    const modal = document.createElement("div");
+    modal.id = "modalBienvenida";
+    modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);";
+    
+    modal.innerHTML = 
+        '<div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;text-align:center;max-width:80%;box-shadow:0 10px 25px rgba(0,0,0,0.5);">' +
+            '<div style="font-size:2.5rem;margin-bottom:12px;">👋</div>' +
+            '<p style="color:#e2e8f0;font-size:1.1rem;font-weight:bold;margin:0 0 20px 0;line-height:1.4;">Hola, descarga tus manuales necesarios!</p>' +
+            '<button onclick="document.getElementById(\'modalBienvenida\').remove()" style="background:#00d4ff;color:#0b0f1a;border:none;padding:10px 24px;border-radius:8px;font-weight:bold;font-size:1rem;cursor:pointer;">OK</button>' +
+        '</div>';
+    
+    document.body.appendChild(modal);
+}
+
+// ─── INIT ────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", function() {
     const q = document.getElementById("q");
     const m = document.getElementById("manual");
@@ -411,7 +410,9 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     document.getElementById("adminPw")?.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();adminEntrar();} });
     document.getElementById("notaTit")?.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();guardarNota();} });
+    
     uiState("welcome");
+    mostrarBienvenida(); // Inyectamos la bienvenida aquí
     if (navigator.onLine) syncPendientes();
 });
 
