@@ -1,4 +1,4 @@
-console.log("✅ app.js v10"); // Actualizado para control de versiones
+console.log("✅ app.js v11");
 
 // ─── RED ──────────────────────────────────────────────────
 function actualizarRed() {
@@ -48,6 +48,7 @@ function toast(msg, tipo) {
 }
 
 // ─── PDF VIEWER (PDF.js) ─────────────────────────────────
+// Carga PDF.js desde CDN de Mozilla al primer uso
 let _pdfJsLoaded = false;
 
 function cargarPdfJs(cb) {
@@ -117,6 +118,7 @@ function abrirVisorPDF(pdfUrl, pageNum, manual) {
 
     activarZoomCanvas();
 
+    // MEJORA INTELIGENTE: Detectamos Android para esquivar el proxy agresivo de las operadoras móviles
     const isAndroid = /Android/i.test(navigator.userAgent);
 
     pdfjsLib.getDocument({ 
@@ -131,7 +133,7 @@ function abrirVisorPDF(pdfUrl, pageNum, manual) {
             document.getElementById("pdfPagInfo").textContent = "Pág. " + pageNum + " / " + doc.numPages;
             renderPdfPagina(pageNum);
         }).catch(function(err) {
-            // CSS Fix: Añadido width:100% y margin:auto para forzar el centrado absoluto
+            // CORRECCIÓN UI: Width 100% y margin auto para forzar el centrado, manteniendo la fuente correcta
             document.getElementById("pdfScroll").innerHTML =
                 '<div style="width:100%; margin:auto; padding:40px 20px; box-sizing:border-box; text-align:center; display:flex; flex-direction:column; align-items:center;">' +
                     '<div style="font-size:3.5rem;margin-bottom:10px;">📡</div>' +
@@ -412,7 +414,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("notaTit")?.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();guardarNota();} });
     
     uiState("welcome");
-    mostrarBienvenida(); // Inyectamos la bienvenida aquí
+    mostrarBienvenida(); 
     if (navigator.onLine) syncPendientes();
 });
 
