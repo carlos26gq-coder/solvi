@@ -8,10 +8,15 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SOLVI">
-<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="apple-touch-icon" href="/static/icon-192.png?v=2">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0b0f1a">
 <meta name="description" content="Buscador de manuales técnicos Elekta Linac">
+
+<meta property="og:title" content="SOLVI — Buscador Técnico">
+<meta property="og:description" content="Buscador de manuales técnicos Elekta Linac">
+<meta property="og:image" content="/static/icon-512.png?v=2">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -126,7 +131,6 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
   </div>
 </header>
 
-<!-- BÚSQUEDA -->
 <div id="screenSearch" class="screen active">
   <div class="search-row">
     <div class="input-wrap" style="flex:2;min-width:140px">
@@ -179,7 +183,6 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
   <div id="resultsList"></div>
 </div>
 
-<!-- APUNTES -->
 <div id="screenNotes" class="screen">
   <div class="notes-header">
     <h2>📝 Mis Apuntes</h2>
@@ -203,7 +206,6 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
   </div>
 </div>
 
-<!-- ADMIN -->
 <div id="screenAdmin" class="screen">
   <div id="adminLock" class="admin-lock">
     <div class="icon">🔒</div>
@@ -246,7 +248,6 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
   <button class="nav-btn" id="navA" onclick="irA('Admin')"><span class="icon">⚙️</span>Admin</button>
 </nav>
 
-<!-- app.js se carga al final del body para que el DOM ya esté listo -->
 <script src="/static/app.js"></script>
 <script>
 // Navegación entre pantallas

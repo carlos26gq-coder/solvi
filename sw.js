@@ -1,7 +1,7 @@
-// SOLVI SW v20
+// SOLVI SW v21
 // Offline robusto: Caché individual y manejo seguro de errores de red
 
-const CACHE = "solvi-v20";
+const CACHE = "solvi-v21";
 
 const PRECACHE = [
     "/",
