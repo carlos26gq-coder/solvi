@@ -1,12 +1,16 @@
-console.log("✅ app.js v13 (Seguridad Global DAT y Filtro Corregido)");
+console.log("✅ app.js v14 (Seguridad Global Ofuscada)");
 
 // ─── SEGURIDAD GLOBAL (PANTALLA DE BLOQUEO) ────────────────
 function verificarAccesoGlobal() {
     const input = document.getElementById("teamAccessInput");
     const errorMsg = document.getElementById("lockErrorMsg");
-    const claveCorrecta = "Dat#2026";
+    
+    // 🛡️ OFUSCACIÓN: La clave "Dat#2026" ahora está codificada en Base64.
+    // Esto evita que curiosos la lean a simple vista en el código fuente.
+    const claveOfuscada = "RGF0IzIwMjY=";
 
-    if (input && input.value === claveCorrecta) {
+    // Transformamos lo que escribe el usuario a Base64 y lo comparamos
+    if (input && btoa(input.value) === claveOfuscada) {
         // Guardar el pase en el celular para futuras visitas
         localStorage.setItem("dat_access", "true");
         // Ocultar la pantalla de bloqueo y restaurar la app
