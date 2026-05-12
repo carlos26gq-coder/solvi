@@ -1,5 +1,5 @@
 """
-api.py — Interlocks Buscador Técnico v8.2 (Seguridad Total: Edición y Eliminación)
+api.py — Interlocks Buscador Técnico v8.3 (Seguridad Total y Filtro Optimizado)
 """
 from flask import Flask, request, jsonify, render_template, send_from_directory, make_response
 from flask_cors import CORS
@@ -127,31 +127,39 @@ def search():
         return jsonify({"results": [], "r2_url": R2_PUBLIC_URL})
 
     results = []
-    for page in manuals:
-        if mfilter and mfilter != "apuntes" and page["manual"].lower() != mfilter:
-            continue
-        tl = page["text"].lower()
-        if keyword not in tl:
-            continue
-        pos = tl.find(keyword)
-        ctx = page["text"][max(0,pos-80):min(len(page["text"]),pos+120)]
-        ctx = ctx.replace("\n"," ").strip()
-        results.append({
-            "type":    "manual",
-            "manual":  page["manual"],
-            "page":    page["page"],
-            "context": ctx,
-            "action":  extract_action(page["text"], keyword)
-                       or "Revisar sección completa del manual"
-        })
+    
+    # 🛡️ CORRECCIÓN DE LÓGICA: Solo iteramos los manuales si el filtro NO es exclusivo de apuntes.
+    if mfilter != "apuntes":
+        for page in manuals:
+            # Si hay un filtro y el manual no coincide, lo saltamos
+            if mfilter and page["manual"].lower() != mfilter:
+                continue
+            
+            tl = page["text"].lower()
+            if keyword not in tl:
+                continue
+                
+            pos = tl.find(keyword)
+            ctx = page["text"][max(0,pos-80):min(len(page["text"]),pos+120)]
+            ctx = ctx.replace("\n"," ").strip()
+            results.append({
+                "type":    "manual",
+                "manual":  page["manual"],
+                "page":    page["page"],
+                "context": ctx,
+                "action":  extract_action(page["text"], keyword)
+                           or "Revisar sección completa del manual"
+            })
 
+    # Búsqueda en los apuntes (Siempre se ejecuta a menos que se haya filtrado un manual específico)
     if not mfilter or mfilter == "apuntes":
         for note in notes_load():
-            blob = (note["title"]+" "+note["text"]+" "+" ".join(note.get("tags",[]))).lower()
+            # Usamos .get() por seguridad en caso de que alguna nota guardada no tenga texto
+            blob = (note.get("title", "") + " " + note.get("text", "") + " " + " ".join(note.get("tags",[]))).lower()
             if keyword in blob:
                 results.append({
-                    "type":"note", "id":note["id"], "manual":"apuntes",
-                    "page":note["title"], "context":note["text"][:220],
+                    "type":"note", "id":note.get("id", ""), "manual":"apuntes",
+                    "page":note.get("title", "Sin Título"), "context":note.get("text", "")[:220],
                     "action":"Apunte personal", "tags":note.get("tags",[])
                 })
 

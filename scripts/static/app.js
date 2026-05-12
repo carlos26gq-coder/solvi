@@ -1,4 +1,28 @@
-console.log("✅ app.js v12 (Seguridad y Visor Integrados)");
+console.log("✅ app.js v13 (Seguridad Global DAT y Filtro Corregido)");
+
+// ─── SEGURIDAD GLOBAL (PANTALLA DE BLOQUEO) ────────────────
+function verificarAccesoGlobal() {
+    const input = document.getElementById("teamAccessInput");
+    const errorMsg = document.getElementById("lockErrorMsg");
+    const claveCorrecta = "Dat#2026";
+
+    if (input && input.value === claveCorrecta) {
+        // Guardar el pase en el celular para futuras visitas
+        localStorage.setItem("dat_access", "true");
+        // Ocultar la pantalla de bloqueo y restaurar la app
+        document.getElementById("globalLockScreen").style.display = "none";
+        document.body.classList.remove("locked");
+        errorMsg.style.display = "none";
+    } else {
+        // Clave incorrecta: mostrar error y sacudir el input
+        if (errorMsg) errorMsg.style.display = "block";
+        if (input) {
+            input.style.borderColor = "var(--danger)";
+            input.value = "";
+            setTimeout(() => input.style.borderColor = "var(--border)", 1500);
+        }
+    }
+}
 
 // ─── RED ──────────────────────────────────────────────────
 function actualizarRed() {
@@ -286,7 +310,6 @@ function uiState(s) {
 // ─── VISOR DE APUNTES EN GRANDE ──────────────────────────
 async function verNotaEnGrande(id) {
     let nota = notasLocal().find(n => n.id === id);
-    // Si no está en memoria local (ej. se acaba de crear y buscamos online), la pedimos de la nube
     if (!nota && navigator.onLine) {
         try {
             const r = await fetch("/notes");
@@ -340,7 +363,6 @@ function renderResultados(results, kw, modo) {
         const tags   = nota && r.tags && r.tags.length
             ? '<div class="card-tags">' + r.tags.map(t => '<span class="tag">'+esc(t)+'</span>').join("") + "</div>" : "";
             
-        // Botón de lectura dependiente de si es Manual (Abre PDF) o Nota (Abre Visor Elegante)
         const pdfBtn = (!nota && _r2url)
             ? '<button class="btn-pdf" onclick="verPDF(\''+esc(r.manual)+'\','+r.page+')">📖 Pág. '+r.page+'</button>' 
             : (nota ? '<button class="btn-pdf" style="color:var(--note); border-color:rgba(167,139,250,.3); background:rgba(167,139,250,.07);" onclick="verNotaEnGrande(\''+r.id+'\')">📖 Leer Apunte</button>' : "");
@@ -353,20 +375,26 @@ function renderResultados(results, kw, modo) {
     });
 }
 
-// ─── BÚSQUEDA OFFLINE ────────────────────────────────────
+// ─── BÚSQUEDA OFFLINE (CORREGIDA) ────────────────────────
 async function buscarOffline(kw, mf) {
-    const data = await getData();
     const res  = [];
     const kwl  = kw.toLowerCase();
     const mfl  = mf.toLowerCase();
-    for (const p of data) {
-        if (mfl && mfl !== "apuntes" && p.manual.toLowerCase() !== mfl) continue;
-        const tl = p.text.toLowerCase();
-        if (!tl.includes(kwl)) continue;
-        const pos = tl.indexOf(kwl);
-        const ctx = p.text.substring(Math.max(0,pos-80), Math.min(p.text.length,pos+120)).replace(/\n+/g," ").trim();
-        res.push({ type:"manual", manual:p.manual, page:p.page, context:ctx, action:"Revisar sección completa del manual" });
+    
+    // 🛡️ CORRECCIÓN: Si el filtro NO es exclusivo de "apuntes", buscamos en los manuales técnicos
+    if (mfl !== "apuntes") {
+        const data = await getData();
+        for (const p of data) {
+            if (mfl && p.manual.toLowerCase() !== mfl) continue;
+            const tl = p.text.toLowerCase();
+            if (!tl.includes(kwl)) continue;
+            const pos = tl.indexOf(kwl);
+            const ctx = p.text.substring(Math.max(0,pos-80), Math.min(p.text.length,pos+120)).replace(/\n+/g," ").trim();
+            res.push({ type:"manual", manual:p.manual, page:p.page, context:ctx, action:"Revisar sección completa del manual" });
+        }
     }
+
+    // 🛡️ Búsqueda en los apuntes locales (Siempre se incluyen a menos que se haya filtrado un manual específico)
     if (!mfl || mfl === "apuntes") {
         notasLocal().forEach(n => {
             const b = (n.title+" "+n.text+" "+(n.tags||[]).join(" ")).toLowerCase();
@@ -449,6 +477,10 @@ document.addEventListener("DOMContentLoaded", function() {
         m.disabled = false;
         m.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();buscar();} });
     }
+    
+    // Escuchar el Enter también en la pantalla de bloqueo
+    document.getElementById("teamAccessInput")?.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();verificarAccesoGlobal();} });
+    
     document.getElementById("adminPw")?.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();adminEntrar();} });
     document.getElementById("notaTit")?.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();guardarNota();} });
     
@@ -457,7 +489,6 @@ document.addEventListener("DOMContentLoaded", function() {
     
     if (navigator.onLine) {
         syncPendientes();
-        // Sincronizar en segundo plano al iniciar para que el visor local esté siempre fresco
         fetch("/notes").then(r=>r.json()).then(notasGuardar).catch(e=>{});
     }
 });
@@ -509,7 +540,6 @@ async function cargarNotas() {
         const tags = (n.tags||[]).map(t=>'<span class="tag">'+esc(t)+'</span>').join("");
         const pend = pendLoad().some(p=>p.id===n.id);
         
-        // Hacemos el título y texto clickeables para abrir el Visor
         d.innerHTML =
             '<div class="note-item-header">'+
               '<div class="note-item-title" style="cursor:pointer; color:var(--accent);" onclick="verNotaEnGrande(\''+n.id+'\')">'+
@@ -539,7 +569,6 @@ function abrirFormNota() {
 function cerrarFormNota() { const f=document.getElementById("formNota"); if(f) f.style.display="none"; }
 
 function editarNota(id) {
-    // 🛡️ REGLA: Si no hay contraseña guardada, avisa al usuario y bloquea la acción visualmente
     if (!_adminPw) { 
         toast("🔒 Acceso denegado: Inicia sesión como Admin para editar", "err"); 
         return; 
@@ -567,7 +596,6 @@ async function guardarNota() {
     
     const nota = { id: id || crypto.randomUUID(), title, text, tags };
     
-    // 🛡️ INYECCIÓN: Si estamos editando (id existe), adjuntamos la contraseña de administrador oculta
     if (id) {
         nota.password = _adminPw;
     }
@@ -588,7 +616,6 @@ async function guardarNota() {
 }
 
 async function eliminarNota(id) {
-    // 🛡️ REGLA: Si no hay contraseña guardada, avisa al usuario y bloquea la acción visualmente
     if (!_adminPw) { 
         toast("🔒 Acceso denegado: Inicia sesión como Admin para eliminar", "err"); 
         return; 
@@ -598,7 +625,6 @@ async function eliminarNota(id) {
     
     if (navigator.onLine) { 
         try { 
-            // Se envía la contraseña por la URL de forma segura al backend
             await fetch("/notes/"+id+"?password="+encodeURIComponent(_adminPw), {method:"DELETE"}); 
         } catch {} 
     }
@@ -626,7 +652,7 @@ async function adminEntrar() {
 }
 
 function adminSalir() {
-    _adminPw = ""; // Borramos la huella de administrador
+    _adminPw = ""; 
     document.getElementById("adminLock").style.display = "flex";
     document.getElementById("adminCont").style.display = "none";
     document.getElementById("adminPw").value = "";

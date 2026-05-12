@@ -117,9 +117,26 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 .terr{border-color:rgba(239,68,68,.4);color:var(--danger)}
 #pdfModal{display:none}
 #pdfCanvas{border-radius:4px}
+
+/* CSS para forzar que el main content se oculte si el bloqueo está activo */
+body.locked { overflow: hidden; }
+body.locked header, body.locked .screen, body.locked .bottom-nav { display: none !important; }
 </style>
 </head>
 <body>
+
+<div id="globalLockScreen" style="display:flex; position:fixed; inset:0; background:var(--bg); z-index:99999; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center;">
+  <div style="background:var(--surface); border:1px solid var(--border); border-top:4px solid var(--accent); border-radius:12px; padding:40px 30px; box-shadow:0 15px 50px rgba(0,0,0,0.8); max-width:350px; width:100%;">
+    <div style="font-size:3rem; margin-bottom:15px;">🔒</div>
+    <h2 style="color:var(--text); font-family:var(--sans); margin-bottom:10px; font-size:1.4rem;">Acceso Restringido</h2>
+    <p style="color:var(--muted); font-size:0.85rem; line-height:1.5; margin-bottom:25px;">Por seguridad, ingrese la clave de acceso del Equipo DAT para consultar los manuales.</p>
+    
+    <input id="teamAccessInput" type="password" placeholder="Código de Acceso" autocomplete="off" style="width:100%; padding:14px; margin-bottom:15px; border-radius:8px; border:1px solid var(--border); background:rgba(0,0,0,0.3); color:var(--text); text-align:center; font-size:1.1rem; letter-spacing:2px; outline:none;">
+    
+    <button class="btn btn-primary" style="width:100%; padding:12px; font-size:1rem;" onclick="verificarAccesoGlobal()">Desbloquear</button>
+    <p id="lockErrorMsg" style="color:var(--danger); font-size:0.8rem; margin-top:15px; display:none; font-family:var(--mono);">❌ Código incorrecto</p>
+  </div>
+</div>
 
 <header>
   <div class="hrow">
@@ -278,6 +295,13 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 
 <script src="/static/app.js"></script>
 <script>
+// Manejo de la visibilidad inicial de la pantalla de bloqueo
+if (localStorage.getItem("dat_access") !== "true") {
+    document.body.classList.add("locked");
+} else {
+    document.getElementById("globalLockScreen").style.display = "none";
+}
+
 // Navegación entre pantallas
 function irA(name) {
     ['Search','Notes','Admin'].forEach(n => {
@@ -287,7 +311,7 @@ function irA(name) {
     if (name==='Notes') cargarNotas();
 }
 
-// Service Worker — solo registrar, sin lógica de recarga
+// Service Worker
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js', {updateViaCache:'none'})
         .then(reg => reg.update())
