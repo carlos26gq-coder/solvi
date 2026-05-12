@@ -293,7 +293,7 @@ body.locked header, body.locked .screen, body.locked .bottom-nav { display: none
   <button class="nav-btn" id="navA" onclick="irA('Admin')"><span class="icon">⚙️</span>Admin</button>
 </nav>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{ build_time }}"></script>
 <script>
 // Manejo de la visibilidad inicial de la pantalla de bloqueo
 if (localStorage.getItem("dat_access") !== "true") {
