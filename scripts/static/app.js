@@ -1,4 +1,4 @@
-console.log("✅ app.js v11");
+console.log("✅ app.js v12 (Seguridad y Visor Integrados)");
 
 // ─── RED ──────────────────────────────────────────────────
 function actualizarRed() {
@@ -48,7 +48,6 @@ function toast(msg, tipo) {
 }
 
 // ─── PDF VIEWER (PDF.js) ─────────────────────────────────
-// Carga PDF.js desde CDN de Mozilla al primer uso
 let _pdfJsLoaded = false;
 
 function cargarPdfJs(cb) {
@@ -118,7 +117,6 @@ function abrirVisorPDF(pdfUrl, pageNum, manual) {
 
     activarZoomCanvas();
 
-    // MEJORA INTELIGENTE: Detectamos Android para esquivar el proxy agresivo de las operadoras móviles
     const isAndroid = /Android/i.test(navigator.userAgent);
 
     pdfjsLib.getDocument({ 
@@ -133,7 +131,6 @@ function abrirVisorPDF(pdfUrl, pageNum, manual) {
             document.getElementById("pdfPagInfo").textContent = "Pág. " + pageNum + " / " + doc.numPages;
             renderPdfPagina(pageNum);
         }).catch(function(err) {
-            // CORRECCIÓN UI: Width 100% y margin auto para forzar el centrado, manteniendo la fuente correcta
             document.getElementById("pdfScroll").innerHTML =
                 '<div style="width:100%; margin:auto; padding:40px 20px; box-sizing:border-box; text-align:center; display:flex; flex-direction:column; align-items:center;">' +
                     '<div style="font-size:3.5rem;margin-bottom:10px;">📡</div>' +
@@ -286,6 +283,42 @@ function uiState(s) {
     document.getElementById("metaBar").style.display       = s==="results"  ? "flex"  : "none";
 }
 
+// ─── VISOR DE APUNTES EN GRANDE ──────────────────────────
+async function verNotaEnGrande(id) {
+    let nota = notasLocal().find(n => n.id === id);
+    // Si no está en memoria local (ej. se acaba de crear y buscamos online), la pedimos de la nube
+    if (!nota && navigator.onLine) {
+        try {
+            const r = await fetch("/notes");
+            const notas = await r.json();
+            notasGuardar(notas);
+            nota = notas.find(n => n.id === id);
+        } catch(e) {}
+    }
+    
+    if (!nota) { toast("⚠️ Apunte no encontrado", "err"); return; }
+    
+    document.getElementById("viewNoteTitle").innerText = nota.title;
+    document.getElementById("viewNoteText").innerText = nota.text;
+    
+    const tagsContainer = document.getElementById("viewNoteTags");
+    tagsContainer.innerHTML = "";
+    if (nota.tags && nota.tags.length > 0) {
+        nota.tags.forEach(t => {
+            const span = document.createElement("span");
+            span.className = "tag";
+            span.innerText = t;
+            tagsContainer.appendChild(span);
+        });
+    }
+    
+    document.getElementById("noteViewer").style.display = "block";
+}
+
+function cerrarVisorNota() {
+    document.getElementById("noteViewer").style.display = "none";
+}
+
 // ─── RENDER RESULTADOS ───────────────────────────────────
 function renderResultados(results, kw, modo) {
     const lista = document.getElementById("resultsList");
@@ -294,18 +327,24 @@ function renderResultados(results, kw, modo) {
     document.getElementById("countNum").textContent = results.length;
     document.getElementById("modeTag").textContent  = modo === "online" ? "ONLINE" : "OFFLINE";
     uiState("results");
+    
     results.forEach((r, i) => {
         const nota = r.type === "note";
         const card = document.createElement("div");
         card.className = "result-card" + (nota ? " note-card" : "");
         card.style.animationDelay = (i * 30) + "ms";
+        
         const badge  = nota ? "note-badge" : "manual-badge";
         const mLabel = nota ? "📝 Apunte" : esc(r.manual);
         const pLabel = nota ? esc(r.page)  : "Página " + r.page;
         const tags   = nota && r.tags && r.tags.length
             ? '<div class="card-tags">' + r.tags.map(t => '<span class="tag">'+esc(t)+'</span>').join("") + "</div>" : "";
+            
+        // Botón de lectura dependiente de si es Manual (Abre PDF) o Nota (Abre Visor Elegante)
         const pdfBtn = (!nota && _r2url)
-            ? '<button class="btn-pdf" onclick="verPDF(\''+esc(r.manual)+'\','+r.page+')">📖 Pág. '+r.page+'</button>' : "";
+            ? '<button class="btn-pdf" onclick="verPDF(\''+esc(r.manual)+'\','+r.page+')">📖 Pág. '+r.page+'</button>' 
+            : (nota ? '<button class="btn-pdf" style="color:var(--note); border-color:rgba(167,139,250,.3); background:rgba(167,139,250,.07);" onclick="verNotaEnGrande(\''+r.id+'\')">📖 Leer Apunte</button>' : "");
+            
         card.innerHTML =
             '<div class="card-header"><span class="card-manual '+badge+'">'+mLabel+'</span><span class="card-page">📄 '+pLabel+'</span></div>'+
             '<div class="card-ctx">'+hi(r.context, kw)+'</div>'+
@@ -415,7 +454,12 @@ document.addEventListener("DOMContentLoaded", function() {
     
     uiState("welcome");
     mostrarBienvenida(); 
-    if (navigator.onLine) syncPendientes();
+    
+    if (navigator.onLine) {
+        syncPendientes();
+        // Sincronizar en segundo plano al iniciar para que el visor local esté siempre fresco
+        fetch("/notes").then(r=>r.json()).then(notasGuardar).catch(e=>{});
+    }
 });
 
 // ─── NOTAS localStorage ──────────────────────────────────
@@ -441,6 +485,9 @@ async function syncPendientes() {
     if (ok > 0) toast("☁️ " + ok + " apunte(s) sincronizado(s)");
 }
 
+// ─── ADMIN ───────────────────────────────────────────────
+let _adminPw = ""; // Variable que guarda el estado de administrador
+
 // ─── NOTAS cargar ────────────────────────────────────────
 async function cargarNotas() {
     const lista = document.getElementById("listaNotas");
@@ -455,20 +502,25 @@ async function cargarNotas() {
     } else { notas = notasLocal(); }
     lista.innerHTML = "";
     if (!notas || !notas.length) { if(empty) empty.style.display="flex"; return; }
+    
     notas.forEach(n => {
         const d = document.createElement("div");
         d.className = "note-item"; d.id = "ni-"+n.id;
         const tags = (n.tags||[]).map(t=>'<span class="tag">'+esc(t)+'</span>').join("");
         const pend = pendLoad().some(p=>p.id===n.id);
+        
+        // Hacemos el título y texto clickeables para abrir el Visor
         d.innerHTML =
             '<div class="note-item-header">'+
-              '<div class="note-item-title">'+esc(n.title)+(pend?' <span style="color:var(--warn);font-size:.7rem">⏳</span>':'')+'</div>'+
+              '<div class="note-item-title" style="cursor:pointer; color:var(--accent);" onclick="verNotaEnGrande(\''+n.id+'\')">'+
+                 esc(n.title)+(pend?' <span style="color:var(--warn);font-size:.7rem">⏳</span>':'')+
+              '</div>'+
               '<div class="note-actions">'+
                 '<button class="btn btn-ghost btn-sm" onclick="editarNota(\''+n.id+'\')">✏️</button>'+
                 '<button class="btn btn-danger btn-sm" onclick="eliminarNota(\''+n.id+'\')">🗑</button>'+
               '</div>'+
             '</div>'+
-            '<div class="note-item-text">'+esc(n.text)+'</div>'+
+            '<div class="note-item-text" style="cursor:pointer;" onclick="verNotaEnGrande(\''+n.id+'\')">'+esc(n.text.substring(0, 100))+(n.text.length > 100 ? '...' : '')+'</div>'+
             (tags?'<div class="card-tags">'+tags+'</div>':"");
         lista.appendChild(d);
     });
@@ -483,8 +535,16 @@ function abrirFormNota() {
     ["editId","notaTit","notaTxt","notaTags"].forEach(id => { const e=document.getElementById(id); if(e) e.value=""; });
     setTimeout(() => document.getElementById("notaTit")?.focus(), 100);
 }
+
 function cerrarFormNota() { const f=document.getElementById("formNota"); if(f) f.style.display="none"; }
+
 function editarNota(id) {
+    // 🛡️ REGLA: Si no hay contraseña guardada, avisa al usuario y bloquea la acción visualmente
+    if (!_adminPw) { 
+        toast("🔒 Acceso denegado: Inicia sesión como Admin para editar", "err"); 
+        return; 
+    }
+    
     const n = notasLocal().find(x=>x.id===id); if(!n) return;
     const f = document.getElementById("formNota"); if(!f) return;
     f.style.display="block";
@@ -496,13 +556,22 @@ function editarNota(id) {
     setTimeout(()=>document.getElementById("notaTit")?.focus(),100);
     f.scrollIntoView({behavior:"smooth"});
 }
+
 async function guardarNota() {
     const id    = document.getElementById("editId").value.trim();
     const title = document.getElementById("notaTit").value.trim();
     const text  = document.getElementById("notaTxt").value.trim();
     const tags  = document.getElementById("notaTags").value.split(",").map(t=>t.trim()).filter(Boolean);
+    
     if (!title) { toast("El título es obligatorio","err"); return; }
+    
     const nota = { id: id || crypto.randomUUID(), title, text, tags };
+    
+    // 🛡️ INYECCIÓN: Si estamos editando (id existe), adjuntamos la contraseña de administrador oculta
+    if (id) {
+        nota.password = _adminPw;
+    }
+    
     if (navigator.onLine) {
         try {
             const method = id ? "PUT" : "POST";
@@ -511,23 +580,35 @@ async function guardarNota() {
             pendDel(nota.id);
         } catch { if(!id) pendAdd(nota); }
     } else { if(!id) pendAdd(nota); toast("⚠️ Sin internet — se sincronizará al conectarte"); }
+    
     notaSync(nota);
     cerrarFormNota();
     cargarNotas();
     toast(id ? "✅ Apunte actualizado" : "✅ Apunte guardado");
 }
+
 async function eliminarNota(id) {
-    if (!confirm("¿Eliminar este apunte?")) return;
-    if (navigator.onLine) { try { await fetch("/notes/"+id,{method:"DELETE"}); } catch {} }
+    // 🛡️ REGLA: Si no hay contraseña guardada, avisa al usuario y bloquea la acción visualmente
+    if (!_adminPw) { 
+        toast("🔒 Acceso denegado: Inicia sesión como Admin para eliminar", "err"); 
+        return; 
+    }
+    
+    if (!confirm("¿Eliminar este apunte de forma permanente?")) return;
+    
+    if (navigator.onLine) { 
+        try { 
+            // Se envía la contraseña por la URL de forma segura al backend
+            await fetch("/notes/"+id+"?password="+encodeURIComponent(_adminPw), {method:"DELETE"}); 
+        } catch {} 
+    }
+    
     notaBorrar(id); pendDel(id);
     document.getElementById("ni-"+id)?.remove();
     const lista = document.getElementById("listaNotas");
     if (lista && !lista.children.length) { const e=document.getElementById("sinNotas"); if(e) e.style.display="flex"; }
     toast("🗑 Apunte eliminado");
 }
-
-// ─── ADMIN ───────────────────────────────────────────────
-let _adminPw = "";
 
 async function adminEntrar() {
     const pw = (document.getElementById("adminPw").value || "").trim();
@@ -539,15 +620,17 @@ async function adminEntrar() {
             document.getElementById("adminLock").style.display    = "none";
             document.getElementById("adminCont").style.display    = "block";
             cargarCfg(); cargarListaManuales();
+            toast("🔓 Modo Administrador Activado", "ok");
         } else { toast("❌ Contraseña incorrecta","err"); }
     } catch { toast("❌ Sin conexión al servidor","err"); }
 }
 
 function adminSalir() {
-    _adminPw = "";
+    _adminPw = ""; // Borramos la huella de administrador
     document.getElementById("adminLock").style.display = "flex";
     document.getElementById("adminCont").style.display = "none";
     document.getElementById("adminPw").value = "";
+    toast("🔒 Sesión cerrada", "ok");
 }
 
 async function cargarCfg() {

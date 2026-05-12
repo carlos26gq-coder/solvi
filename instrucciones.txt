@@ -30,4 +30,8 @@ para ver el árbol de las carpetas
 
 ----
 git remote set-url origin http...
-subir el nuevo url de GitHub para cambiar el enlace a github
+subir el nuevo url de GitHub para cambiar el enlace a GitHub
+…
+supabase contraseña de proyecto solvi-db: fHxoGwskDDGq7NnE
+en api keys SUPABASE_KEY - publishable key: sb_publishable_701uRp0jjt5_QP8ghymr_Q_dpUp8Kne
+en integrations data api - SUPABASE_URL - https://geftqowxpiyjwgrbohel.supabase.co/rest/v1/

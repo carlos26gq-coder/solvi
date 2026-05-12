@@ -1,11 +1,11 @@
 """
-api.py — Interlocks Buscador Técnico v8 (Integración Supabase)
+api.py — Interlocks Buscador Técnico v8.2 (Seguridad Total: Edición y Eliminación)
 """
 from flask import Flask, request, jsonify, render_template, send_from_directory, make_response
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from supabase import create_client, Client # ☁️ Nuevo import para Supabase
+from supabase import create_client, Client
 from pathlib import Path
 import json, os, uuid, time, secrets
 from action_extractor import extract_action
@@ -41,7 +41,6 @@ BUILD_TIME = str(int(time.time()))
 BASE_DIR   = Path(__file__).resolve().parent.parent
 DATA_DIR   = BASE_DIR / "data"
 DATA_PATH  = DATA_DIR / "all_manuals.json"
-# Ya no usaremos NOTES_PATH para escribir, todo va a la nube.
 
 with open(DATA_PATH, "r", encoding="utf-8") as f:
     manuals = json.load(f)
@@ -63,7 +62,7 @@ def check_pw(pw):
     return pw.strip() == ADMIN_PASSWORD
 
 def notes_load():
-    """Descarga los apuntes de Supabase para alimentar el buscador interno y el admin."""
+    """Descarga los apuntes de Supabase para alimentar el buscador interno."""
     if not supabase: return []
     try:
         response = supabase.table("notes").select("*").execute()
@@ -171,6 +170,7 @@ def get_notes():
 
 @app.route("/notes", methods=["POST"])
 def create_note():
+    # 🔓 PUBLICO: Cualquier miembro del equipo puede crear apuntes
     if not supabase: return jsonify({"error": "Supabase no conectado"}), 500
     try:
         d = request.get_json(force=True)
@@ -181,16 +181,26 @@ def create_note():
             "tags": [t.strip() for t in d.get("tags", []) if t.strip()]
         }
         response = supabase.table("notes").insert(note_data).execute()
-        # Retorna el objeto guardado para actualizar el frontend
         return jsonify(response.data[0] if response.data else note_data), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route("/notes/<nid>", methods=["PUT"])
 def update_note(nid):
+    # 🔒 RESTRINGIDO: Solo el administrador puede editar apuntes
     if not supabase: return jsonify({"error": "Supabase no conectado"}), 500
+    
     try:
         d = request.get_json(force=True)
+    except:
+        d = {}
+
+    # Soporta recibir la contraseña por URL o por JSON
+    pw = request.args.get("password", "").strip() or d.get("password", "").strip()
+    if pw != ADMIN_PASSWORD:
+        return jsonify({"error": "Acceso denegado: Solo el administrador puede editar apuntes."}), 403
+
+    try:
         update_data = {
             "title": d.get("title", "").strip(),
             "text": d.get("text", "").strip(),
@@ -203,7 +213,13 @@ def update_note(nid):
 
 @app.route("/notes/<nid>", methods=["DELETE"])
 def delete_note(nid):
+    # 🔒 RESTRINGIDO: Solo el administrador puede eliminar apuntes
     if not supabase: return jsonify({"error": "Supabase no conectado"}), 500
+    
+    pw = request.args.get("password", "").strip()
+    if pw != ADMIN_PASSWORD:
+        return jsonify({"error": "Acceso denegado: Solo el administrador puede eliminar apuntes."}), 403
+        
     try:
         supabase.table("notes").delete().eq("id", nid).execute()
         return jsonify({"ok": True}), 200
@@ -213,7 +229,7 @@ def delete_note(nid):
 # ── ADMIN ────────────────────────────────────────────────
 
 @app.route("/admin/check", methods=["POST"])
-@limiter.limit("5 per minute") # 🛡️ ESCUDO 3: Solo 5 intentos por minuto por IP
+@limiter.limit("5 per minute")
 def admin_check():
     d  = request.get_json(force=True)
     pw = d.get("password","").strip()

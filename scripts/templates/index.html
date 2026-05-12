@@ -230,15 +230,43 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
         <b>2.</b> Sube el PDF a Cloudflare R2 → bucket <code>interlocks-manuals</code>
       </div>
     </div>
-    <div class="admin-section"><h3>📝 APUNTES PERMANENTES</h3>
+    <div class="admin-section"><h3>☁️ APUNTES EN LA NUBE</h3>
       <div class="info-box">
-        Para que persistan tras un reinicio de Render,<br>
-        copia <code>data/notes.json</code> a tu repo y haz push a GitHub.
+        Los apuntes de todo el equipo ahora se guardan de forma segura y centralizada en <b>Supabase</b>. No requieren copias locales ni reinicios.
       </div>
     </div>
     <div style="text-align:center;margin-top:4px">
       <button class="btn btn-ghost btn-sm" onclick="adminSalir()">Cerrar sesión</button>
     </div>
+  </div>
+</div>
+
+<div id="noteViewer" style="display:none; position:fixed; inset:0; background:rgba(11,15,26,0.95); z-index:2000; overflow-y:auto; backdrop-filter:blur(5px); padding:15px;">
+  <div style="max-width:700px; margin:20px auto 80px; background:var(--surface); border:1px solid var(--border); border-top:4px solid var(--accent); border-radius:8px; box-shadow:0 15px 40px rgba(0,0,0,0.6); position:relative; display:flex; flex-direction:column;">
+    
+    <div style="padding:16px 24px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02);">
+      <div style="font-family:var(--mono); font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; font-weight:600;">
+        <span style="color:var(--accent);">Elekta Linac</span> · Technical Note
+      </div>
+      <button class="btn-ghost" onclick="cerrarVisorNota()" style="border:none; background:rgba(255,255,255,0.05); border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:1.3rem; cursor:pointer; color:var(--text); transition:background 0.2s;">
+        &times;
+      </button>
+    </div>
+
+    <div style="padding:30px 24px;">
+      <h2 id="viewNoteTitle" style="font-family:var(--sans); font-size:1.4rem; color:var(--text); font-weight:700; margin-bottom:12px; line-height:1.3;"></h2>
+      <div id="viewNoteTags" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:25px;"></div>
+      
+      <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border); border-left:3px solid var(--note); border-radius:6px; padding:20px;">
+        <div id="viewNoteText" style="font-family:var(--sans); font-size:0.92rem; line-height:1.8; color:#cbd5e1; white-space:pre-wrap;"></div>
+      </div>
+    </div>
+
+    <div style="padding:15px 24px; border-top:1px solid var(--border); background:rgba(0,0,0,0.3); border-bottom-left-radius:8px; border-bottom-right-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-family:var(--mono); font-size:0.65rem; color:var(--muted);">EQUIPO DAT</span>
+      <span style="font-family:var(--mono); font-size:0.65rem; color:var(--muted); text-transform:uppercase;">SECURE CLOUD STORAGE</span>
+    </div>
+
   </div>
 </div>
 
