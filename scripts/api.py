@@ -1,5 +1,5 @@
 """
-api.py — Interlocks Buscador Técnico v8.3 (Seguridad Total y Filtro Optimizado)
+api.py — Interlocks Buscador Técnico v8.4 (Contexto Optimizado y Limpieza UI)
 """
 from flask import Flask, request, jsonify, render_template, send_from_directory, make_response
 from flask_cors import CORS
@@ -8,7 +8,8 @@ from flask_limiter.util import get_remote_address
 from supabase import create_client, Client
 from pathlib import Path
 import json, os, uuid, time, secrets
-from action_extractor import extract_action
+
+# 🗑️ Se eliminó la importación de extract_action para aligerar el servidor
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 CORS(app)
@@ -128,10 +129,8 @@ def search():
 
     results = []
     
-    # 🛡️ CORRECCIÓN DE LÓGICA: Solo iteramos los manuales si el filtro NO es exclusivo de apuntes.
     if mfilter != "apuntes":
         for page in manuals:
-            # Si hay un filtro y el manual no coincide, lo saltamos
             if mfilter and page["manual"].lower() != mfilter:
                 continue
             
@@ -140,27 +139,38 @@ def search():
                 continue
                 
             pos = tl.find(keyword)
-            ctx = page["text"][max(0,pos-80):min(len(page["text"]),pos+120)]
-            ctx = ctx.replace("\n"," ").strip()
+            
+            # 🔧 MODIFICACIÓN: Contexto visual equilibrado para móviles (120 prev, 180 post)
+            start_pos = max(0, pos - 120)
+            end_pos = min(len(page["text"]), pos + 180)
+            ctx = page["text"][start_pos:end_pos].replace("\n", " ").strip()
+            
+            # 🔧 MODIFICACIÓN: Puntuación indicativa inteligente
+            if start_pos > 0:
+                ctx = "... " + ctx
+            if end_pos < len(page["text"]):
+                ctx = ctx + " ..."
+
             results.append({
                 "type":    "manual",
                 "manual":  page["manual"],
                 "page":    page["page"],
-                "context": ctx,
-                "action":  extract_action(page["text"], keyword)
-                           or "Revisar sección completa del manual"
+                "context": ctx
             })
 
-    # Búsqueda en los apuntes (Siempre se ejecuta a menos que se haya filtrado un manual específico)
     if not mfilter or mfilter == "apuntes":
         for note in notes_load():
-            # Usamos .get() por seguridad en caso de que alguna nota guardada no tenga texto
             blob = (note.get("title", "") + " " + note.get("text", "") + " " + " ".join(note.get("tags",[]))).lower()
             if keyword in blob:
+                # 🔧 MODIFICACIÓN: Contexto de notas estandarizado a 250 caracteres
+                full_text = note.get("text", "")
+                note_ctx = full_text[:250] + ("..." if len(full_text) > 250 else "")
+                
                 results.append({
                     "type":"note", "id":note.get("id", ""), "manual":"apuntes",
-                    "page":note.get("title", "Sin Título"), "context":note.get("text", "")[:220],
-                    "action":"Apunte personal", "tags":note.get("tags",[])
+                    "page":note.get("title", "Sin Título"), 
+                    "context": note_ctx, 
+                    "tags":note.get("tags",[])
                 })
 
     return jsonify({"results": results, "r2_url": R2_PUBLIC_URL})
@@ -178,7 +188,6 @@ def get_notes():
 
 @app.route("/notes", methods=["POST"])
 def create_note():
-    # 🔓 PUBLICO: Cualquier miembro del equipo puede crear apuntes
     if not supabase: return jsonify({"error": "Supabase no conectado"}), 500
     try:
         d = request.get_json(force=True)
@@ -195,7 +204,6 @@ def create_note():
 
 @app.route("/notes/<nid>", methods=["PUT"])
 def update_note(nid):
-    # 🔒 RESTRINGIDO: Solo el administrador puede editar apuntes
     if not supabase: return jsonify({"error": "Supabase no conectado"}), 500
     
     try:
@@ -203,7 +211,6 @@ def update_note(nid):
     except:
         d = {}
 
-    # Soporta recibir la contraseña por URL o por JSON
     pw = request.args.get("password", "").strip() or d.get("password", "").strip()
     if pw != ADMIN_PASSWORD:
         return jsonify({"error": "Acceso denegado: Solo el administrador puede editar apuntes."}), 403
@@ -221,7 +228,6 @@ def update_note(nid):
 
 @app.route("/notes/<nid>", methods=["DELETE"])
 def delete_note(nid):
-    # 🔒 RESTRINGIDO: Solo el administrador puede eliminar apuntes
     if not supabase: return jsonify({"error": "Supabase no conectado"}), 500
     
     pw = request.args.get("password", "").strip()
