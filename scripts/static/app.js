@@ -1,24 +1,19 @@
-console.log("✅ app.js v14 (Seguridad Global Ofuscada)");
+console.log("✅ app.js v15 (Sincronización de Contexto Visual y Limpieza)");
 
 // ─── SEGURIDAD GLOBAL (PANTALLA DE BLOQUEO) ────────────────
 function verificarAccesoGlobal() {
     const input = document.getElementById("teamAccessInput");
     const errorMsg = document.getElementById("lockErrorMsg");
     
-    // 🛡️ OFUSCACIÓN: La clave "Dat#2026" ahora está codificada en Base64.
-    // Esto evita que curiosos la lean a simple vista en el código fuente.
+    // 🛡️ OFUSCACIÓN: La clave "Dat#2026" codificada en Base64.
     const claveOfuscada = "RGF0IzIwMjY=";
 
-    // Transformamos lo que escribe el usuario a Base64 y lo comparamos
     if (input && btoa(input.value) === claveOfuscada) {
-        // Guardar el pase en el celular para futuras visitas
         localStorage.setItem("dat_access", "true");
-        // Ocultar la pantalla de bloqueo y restaurar la app
         document.getElementById("globalLockScreen").style.display = "none";
         document.body.classList.remove("locked");
         errorMsg.style.display = "none";
     } else {
-        // Clave incorrecta: mostrar error y sacudir el input
         if (errorMsg) errorMsg.style.display = "block";
         if (input) {
             input.style.borderColor = "var(--danger)";
@@ -59,6 +54,7 @@ async function getData() {
 
 // ─── HELPERS ─────────────────────────────────────────────
 function esc(s) {
+    if (s === undefined || s === null) return "";
     return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 function hi(txt, kw) {
@@ -368,24 +364,24 @@ function renderResultados(results, kw, modo) {
             ? '<div class="card-tags">' + r.tags.map(t => '<span class="tag">'+esc(t)+'</span>').join("") + "</div>" : "";
             
         const pdfBtn = (!nota && _r2url)
-            ? '<button class="btn-pdf" onclick="verPDF(\''+esc(r.manual)+'\','+r.page+')">📖 Pág. '+r.page+'</button>' 
+            ? '<button class="btn-pdf" onclick="verPDF(\''+esc(r.manual)+'\','+r.page+')">📖 Ver Pág. '+r.page+'</button>' 
             : (nota ? '<button class="btn-pdf" style="color:var(--note); border-color:rgba(167,139,250,.3); background:rgba(167,139,250,.07);" onclick="verNotaEnGrande(\''+r.id+'\')">📖 Leer Apunte</button>' : "");
             
+        // 🔧 MODIFICACIÓN: Eliminamos el contenedor de "card-action" inútil y alineamos el botón PDF a la derecha
         card.innerHTML =
             '<div class="card-header"><span class="card-manual '+badge+'">'+mLabel+'</span><span class="card-page">📄 '+pLabel+'</span></div>'+
             '<div class="card-ctx">'+hi(r.context, kw)+'</div>'+
-            '<div class="card-footer"><div class="card-action">'+esc(r.action)+'</div>'+pdfBtn+'</div>'+tags;
+            '<div class="card-footer" style="justify-content: flex-end;">'+pdfBtn+'</div>'+tags;
         lista.appendChild(card);
     });
 }
 
-// ─── BÚSQUEDA OFFLINE (CORREGIDA) ────────────────────────
+// ─── BÚSQUEDA OFFLINE (Sincronizada con Python) ──────────
 async function buscarOffline(kw, mf) {
     const res  = [];
     const kwl  = kw.toLowerCase();
     const mfl  = mf.toLowerCase();
     
-    // 🛡️ CORRECCIÓN: Si el filtro NO es exclusivo de "apuntes", buscamos en los manuales técnicos
     if (mfl !== "apuntes") {
         const data = await getData();
         for (const p of data) {
@@ -393,16 +389,28 @@ async function buscarOffline(kw, mf) {
             const tl = p.text.toLowerCase();
             if (!tl.includes(kwl)) continue;
             const pos = tl.indexOf(kwl);
-            const ctx = p.text.substring(Math.max(0,pos-80), Math.min(p.text.length,pos+120)).replace(/\n+/g," ").trim();
-            res.push({ type:"manual", manual:p.manual, page:p.page, context:ctx, action:"Revisar sección completa del manual" });
+            
+            // 🔧 MODIFICACIÓN: Matemática de contexto idéntica al servidor (120 prev, 180 post)
+            const startPos = Math.max(0, pos - 120);
+            const endPos = Math.min(p.text.length, pos + 180);
+            let ctx = p.text.substring(startPos, endPos).replace(/\n+/g," ").trim();
+            
+            if (startPos > 0) ctx = "... " + ctx;
+            if (endPos < p.text.length) ctx = ctx + " ...";
+            
+            res.push({ type:"manual", manual:p.manual, page:p.page, context:ctx });
         }
     }
 
-    // 🛡️ Búsqueda en los apuntes locales (Siempre se incluyen a menos que se haya filtrado un manual específico)
     if (!mfl || mfl === "apuntes") {
         notasLocal().forEach(n => {
             const b = (n.title+" "+n.text+" "+(n.tags||[]).join(" ")).toLowerCase();
-            if (b.includes(kwl)) res.push({ type:"note", id:n.id, manual:"apuntes", page:n.title, context:n.text.substring(0,220), action:"Apunte personal", tags:n.tags||[] });
+            if (b.includes(kwl)) {
+                // 🔧 MODIFICACIÓN: Contexto estandarizado a 250 caracteres para apuntes
+                let ctx = n.text.substring(0, 250);
+                if (n.text.length > 250) ctx += "...";
+                res.push({ type:"note", id:n.id, manual:"apuntes", page:n.title, context:ctx, tags:n.tags||[] });
+            }
         });
     }
     return res;
@@ -482,7 +490,6 @@ document.addEventListener("DOMContentLoaded", function() {
         m.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();buscar();} });
     }
     
-    // Escuchar el Enter también en la pantalla de bloqueo
     document.getElementById("teamAccessInput")?.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();verificarAccesoGlobal();} });
     
     document.getElementById("adminPw")?.addEventListener("keydown", e => { if(e.key==="Enter"){e.preventDefault();adminEntrar();} });
@@ -521,7 +528,7 @@ async function syncPendientes() {
 }
 
 // ─── ADMIN ───────────────────────────────────────────────
-let _adminPw = ""; // Variable que guarda el estado de administrador
+let _adminPw = ""; 
 
 // ─── NOTAS cargar ────────────────────────────────────────
 async function cargarNotas() {
